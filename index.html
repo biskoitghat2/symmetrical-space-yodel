@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>HESAB FLOW</title>
+  <!-- Use local fonts instead of CDN to avoid tracking prevention -->
+  <link href="/fonts/vazirmatn.css" rel="stylesheet" type="text/css" />
+  <style>
+    /* Initial Loading Screen - Shows immediately before React loads */
+    #initial-loader {
+      position: fixed;
+      inset: 0;
+      background: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-family: 'Vazirmatn', sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader {
+        background: #000000;
+      }
+    }
+
+    #initial-loader .loader-content {
+      text-align: center;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    #initial-loader .logo {
+      width: 64px;
+      height: 64px;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader .logo {
+        background: #ffffff;
+      }
+    }
+
+    #initial-loader .logo-text {
+      font-size: 24px;
+      font-weight: 900;
+      color: white;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader .logo-text {
+        color: #0f172a;
+      }
+    }
+
+    #initial-loader h1 {
+      font-size: 24px;
+      font-weight: 900;
+      color: #111827;
+      margin: 0 0 8px 0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader h1 {
+        color: #ffffff;
+      }
+    }
+
+    #initial-loader p {
+      font-size: 14px;
+      color: #6b7280;
+      margin: 0 0 32px 0;
+    }
+
+    #initial-loader .progress-bar {
+      width: 200px;
+      height: 4px;
+      background: #e5e7eb;
+      margin: 0 auto;
+      overflow: hidden;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader .progress-bar {
+        background: #1f2937;
+      }
+    }
+
+    #initial-loader .progress-fill {
+      height: 100%;
+      background: #0f172a;
+      animation: progress 1.5s ease-in-out infinite;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #initial-loader .progress-fill {
+        background: #ffffff;
+      }
+    }
+
+    #initial-loader .loading-text {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes progress {
+      0% {
+        transform: translateX(-100%);
+      }
+      100% {
+        transform: translateX(400%);
+      }
+    }
+
+    /* Hide loader when React is ready */
+    .react-loaded #initial-loader {
+      animation: fadeOut 0.3s ease-out forwards;
+    }
+
+    @keyframes fadeOut {
+      to {
+        opacity: 0;
+        visibility: hidden;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-gray-50 text-slate-900 dark:bg-dark dark:text-gray-100 transition-colors duration-200">
+  <!-- Initial Loading Screen (Pure HTML/CSS - Shows immediately) -->
+  <div id="initial-loader">
+    <div class="loader-content">
+      <div class="logo">
+        <span class="logo-text">HF</span>
+      </div>
+      <h1>حساب فلو</h1>
+      <p>نرم‌افزار حسابداری هوشمند</p>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <div class="loading-text">در حال بارگذاری...</div>
+    </div>
+  </div>
+
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+  
+  <script>
+    // Hide initial loader when React is ready
+    window.addEventListener('DOMContentLoaded', () => {
+      // Wait a bit for React to mount
+      setTimeout(() => {
+        document.body.classList.add('react-loaded');
+      }, 100);
+    });
+  </script>
+</body>
+
+</html>

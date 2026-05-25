@@ -1,0 +1,397 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base Styles */
+body {
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #262626;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom Scrollbar Utility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Hide number input arrows (spinners) */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* DatePicker Customization */
+.rmdp-container {
+  width: 100%;
+}
+
+.rmdp-input {
+  width: 100%;
+  height: 38px;
+  border-radius: 0;
+  border: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  padding: 0 1rem;
+  color: #111827;
+}
+
+.dark .rmdp-input {
+  background-color: #171717;
+  border-color: #404040;
+  color: white;
+}
+
+.rmdp-wrapper {
+  border-radius: 0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Fade in animation utility */
+.animate-fade-in {
+  animation: var(--animate-fade-in);
+}
+
+/* Print Utilities */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+}
+
+
+/* Base Styles */
+body {
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #262626;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom Scrollbar Utility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Hide number input arrows (spinners) */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* ============================================================
+   DatePicker Customization (react-multi-date-picker)
+   Matches app theme: light/dark, Vazirmatn, tabular-nums, drawer
+   animation on open. Only `.rmdp-input` styles below — the calendar
+   popup (.rmdp-wrapper and children) is styled in the dedicated
+   block further down with full dark-mode + animation.
+   ============================================================ */
+.rmdp-container {
+  width: 100%;
+}
+
+.rmdp-input {
+  width: 100%;
+  height: 38px;
+  border-radius: 0;
+  border: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  font-family: 'Vazirmatn', sans-serif;
+  font-size: 0.875rem;
+  padding: 0 1rem;
+  color: #111827;
+}
+
+.dark .rmdp-input {
+  background-color: #171717;
+  border-color: #404040;
+  color: white;
+}
+
+/* === Calendar popup === */
+.rmdp-wrapper {
+  border-radius: 0 !important;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.18) !important;
+  background-color: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  font-family: 'Vazirmatn', sans-serif !important;
+  /* Drawer-down animation, same as Select */
+  animation: drawer-down 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+  transform-origin: top center;
+}
+
+.dark .rmdp-wrapper {
+  background-color: #050505 !important;
+  border-color: #404040 !important;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Header (month/year navigation) */
+.rmdp-header {
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  margin: 0 !important;
+  padding: 8px !important;
+  font-weight: 700;
+}
+.dark .rmdp-header { background-color: #0a0a0a; border-bottom-color: #262626; }
+.rmdp-header-values { color: #111827; font-weight: 700; }
+.dark .rmdp-header-values { color: #ffffff; }
+.rmdp-header-values span { font-weight: 700 !important; }
+
+/* Arrows */
+.rmdp-arrow-container { border-radius: 4px; }
+.rmdp-arrow-container:hover { background-color: #f3f4f6; }
+.dark .rmdp-arrow-container:hover { background-color: #171717; }
+.rmdp-arrow { border-color: #6b7280; }
+.dark .rmdp-arrow { border-color: #a3a3a3; }
+
+/* Day-of-week header */
+.rmdp-week-day {
+  color: #6b7280 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+.dark .rmdp-week-day { color: #a3a3a3 !important; }
+
+/* Day cells */
+.rmdp-day {
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dark .rmdp-day { color: #d4d4d4; }
+
+.rmdp-day span {
+  border-radius: 4px !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.rmdp-day:not(.rmdp-disabled):not(.rmdp-day-hidden) span:hover {
+  background-color: #e0e7ff !important;
+  color: #0f172a !important;
+}
+.dark .rmdp-day:not(.rmdp-disabled):not(.rmdp-day-hidden) span:hover {
+  background-color: #262626 !important;
+  color: #ffffff !important;
+}
+
+/* Today */
+.rmdp-today span {
+  background-color: transparent !important;
+  color: #0ea5e9 !important;
+  font-weight: 700;
+  border: 1px solid #0ea5e9 !important;
+}
+.dark .rmdp-today span { color: #38bdf8 !important; border-color: #38bdf8 !important; }
+
+/* Selected day */
+.rmdp-selected span:not(.highlight) {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  border-color: #0f172a !important;
+}
+.dark .rmdp-selected span:not(.highlight) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #ffffff !important;
+}
+
+/* Range selection */
+.rmdp-range {
+  background-color: #e0e7ff !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+.dark .rmdp-range { background-color: #1e293b !important; color: #ffffff !important; }
+.rmdp-range.start span, .rmdp-range.end span {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+.dark .rmdp-range.start span, .dark .rmdp-range.end span {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Disabled days */
+.rmdp-disabled span { color: #d1d5db !important; }
+.dark .rmdp-disabled span { color: #404040 !important; }
+
+/* Outside-of-month days (in month view) */
+.rmdp-day.rmdp-deactive { color: #d1d5db; }
+.dark .rmdp-day.rmdp-deactive { color: #525252; }
+
+/* Top/bottom toolbar */
+.rmdp-top-class, .rmdp-toolbar {
+  background-color: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+.dark .rmdp-top-class, .dark .rmdp-toolbar {
+  background-color: #0a0a0a;
+  border-top-color: #262626;
+}
+.rmdp-toolbar div {
+  color: #374151 !important;
+  font-weight: 700 !important;
+  transition: background-color 0.15s ease;
+}
+.rmdp-toolbar div:hover {
+  background-color: #e0e7ff !important;
+  color: #0f172a !important;
+}
+.dark .rmdp-toolbar div { color: #d4d4d4 !important; }
+.dark .rmdp-toolbar div:hover { background-color: #262626 !important; color: #ffffff !important; }
+
+/* Year picker grid */
+.rmdp-year-picker, .rmdp-month-picker {
+  background-color: #ffffff;
+}
+.dark .rmdp-year-picker, .dark .rmdp-month-picker {
+  background-color: #050505;
+}
+
+/* Readable Persian dates: tabular digits keep month/day columns aligned,
+   slightly tighter tracking + medium weight makes the date legible at
+   small sizes inside dense table rows. */
+.font-date {
+  font-family: 'Vazirmatn', 'Roboto Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+
+/* Print Utilities */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+}
