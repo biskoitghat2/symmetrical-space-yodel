@@ -76,6 +76,28 @@ export class WebDatabase {
       const cols = m[2].split(',').map(c => c.trim());
       const row: Row = {};
       cols.forEach((col, i) => { row[col] = params[i] ?? null; });
+
+      // Handle INSERT OR REPLACE / OR IGNORE by upserting on the first listed
+      // column (the conventional primary key for this app: id, or `key` for
+      // the settings table). Without this, `saveSettings` (which uses
+      // INSERT OR REPLACE INTO settings) would grow the table unbounded in
+      // browser mode and getSettings would re-apply every old row in order.
+      const orReplace = /^INSERT\s+OR\s+REPLACE/i.test(s);
+      const orIgnore = /^INSERT\s+OR\s+IGNORE/i.test(s);
+      if (orReplace || orIgnore) {
+        const pkCol = cols[0];
+        const pkVal = row[pkCol];
+        const existing = this.getTable(m[1]);
+        const idx = existing.findIndex(r => String(r[pkCol]) === String(pkVal));
+        if (idx >= 0) {
+          if (orIgnore) return; // existing row wins
+          const next = [...existing];
+          next[idx] = row;
+          this.setTable(m[1], next);
+          return;
+        }
+      }
+
       this.setTable(m[1], [...this.getTable(m[1]), row]);
       return;
     }

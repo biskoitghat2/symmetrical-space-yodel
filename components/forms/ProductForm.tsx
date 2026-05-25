@@ -151,7 +151,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ windowId, initialData 
   const [showErrors, setShowErrors] = useState(false);
   const closeWindow = useWindowStore((state) => state.closeWindow);
   const { addProduct, updateProduct, addCategory, addUnit, categories, units, products } = useDataStore();
-  const { showToast } = useUIStore();
+  const { showToast, confirm } = useUIStore();
 
   // Detect duplicate name (only when creating, ignore case + trim)
   const duplicateProduct = useMemo(() => {
@@ -238,17 +238,28 @@ export const ProductForm: React.FC<ProductFormProps> = ({ windowId, initialData 
   const handleAddUnit = async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const isDecimal = window.confirm(
-      `آیا واحد «${trimmed}» اعشاری است؟\n\nبله = مقدار اعشاری (مثل کیلوگرم، متر)\nخیر = فقط عدد صحیح (مثل عدد، بسته)`
-    );
-    try {
-      const newUnit = { id: crypto.randomUUID(), name: trimmed, isDecimal };
-      await addUnit(newUnit);
-      setFormState(prev => ({ ...prev, unit: trimmed }));
-      showToast('success', `واحد «${trimmed}» اضافه شد`);
-    } catch (err: any) {
-      showToast('error', err?.message || 'افزودن واحد ناموفق بود');
-    }
+    // Use the themed confirm modal (RTL + dark) instead of the native blocking
+    // window.confirm. We need the boolean answer asynchronously, so wire each
+    // branch (yes = decimal, no/cancel = integer) through the modal callbacks.
+    const persist = async (isDecimal: boolean) => {
+      try {
+        const newUnit = { id: crypto.randomUUID(), name: trimmed, isDecimal };
+        await addUnit(newUnit);
+        setFormState(prev => ({ ...prev, unit: trimmed }));
+        showToast('success', `واحد «${trimmed}» اضافه شد (${isDecimal ? 'اعشاری' : 'عدد صحیح'})`);
+      } catch (err: any) {
+        showToast('error', err?.message || 'افزودن واحد ناموفق بود');
+      }
+    };
+    confirm({
+      title: `واحد «${trimmed}» اعشاری است؟`,
+      message: 'بله = مقدار اعشاری (کیلوگرم، متر، لیتر)\nخیر = فقط عدد صحیح (عدد، بسته، دستگاه)',
+      variant: 'info',
+      confirmText: 'بله — اعشاری',
+      cancelText: 'خیر — عدد صحیح',
+      onConfirm: () => persist(true),
+      onCancel: () => persist(false),
+    });
   };
 
   // Derive whether the currently selected unit allows decimal quantities
@@ -319,9 +330,20 @@ export const ProductForm: React.FC<ProductFormProps> = ({ windowId, initialData 
       return;
     }
 
-    if (Number(formState.sellPrice) < Number(formState.buyPrice)) {
-      const confirmed = confirm('⚠️ هشدار: قیمت فروش کمتر از قیمت خرید است! آیا مطمئن هستید؟');
-      if (!confirmed) return;
+    // Sell-price-less-than-buy guard — themed warning confirm. On accept,
+    // recursively re-enter handleSubmit with a flag so we don't loop.
+    if (Number(formState.sellPrice) < Number(formState.buyPrice) && !(e as any)._priceWarningAccepted) {
+      confirm({
+        title: 'قیمت فروش کمتر از خرید',
+        message: 'قیمت فروش کمتر از قیمت خرید است. این یعنی هر فروش زیان به همراه دارد. ادامه می‌دهید؟',
+        variant: 'warning',
+        confirmText: 'بله، ادامه',
+        onConfirm: () => {
+          const fakeEvent = { preventDefault() {}, _priceWarningAccepted: true } as any;
+          handleSubmit(fakeEvent);
+        },
+      });
+      return;
     }
 
     const now = new Date().toLocaleDateString('fa-IR-u-nu-latn');

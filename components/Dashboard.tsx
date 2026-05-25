@@ -1,6 +1,7 @@
 
 import React, { useMemo, useEffect } from 'react';
 import { moneySum, moneySub } from '../utils/money';
+import { normalizePersianDate } from '../utils/dateUtils';
 import { useDataStore } from '../store/dataStore';
 import { useWindowStore } from '../store/windowStore';
 import { useUIStore } from '../store/uiStore';
@@ -14,14 +15,20 @@ import {
 
 export const Dashboard: React.FC = () => {
     const { transactions, bankAccounts, checks, products, invoices, customers } = useDataStore();
-    const { openWindow } = useWindowStore();
+    const { openWindow, windows, currentPage } = useWindowStore();
     const { notifications } = useUIStore();
 
     // --- Keyboard Shortcuts ---
+    // F2/F3/F4/F8 are global by intent (open quick-create windows from anywhere
+    // in the dashboard) but must NOT fire when another window is on top —
+    // otherwise pressing F2 inside an open InvoiceForm spawns a second invoice.
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Only trigger if no modal/input is active (simple check)
+            // Skip when typing in any input/textarea (basic guard)
             if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+            // Skip when another window is open OR when a non-dashboard page is showing
+            const hasOpenWindow = windows.some(w => !w.isMinimized);
+            if (hasOpenWindow || currentPage !== 'dashboard') return;
 
             switch (e.key) {
                 case 'F2':
@@ -45,7 +52,7 @@ export const Dashboard: React.FC = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [openWindow]);
+    }, [openWindow, windows, currentPage]);
 
     // --- Calculations ---
     const stats = useMemo(() => {
@@ -136,8 +143,12 @@ export const Dashboard: React.FC = () => {
                 isPositive: t.type === 'income'
             }))
         ];
-        // Sort desc
-        return mixed.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
+        // Sort desc — normalize Persian dates (Latin-unpadded "1404/2/5" vs
+        // Persian-padded "۱۴۰۴/۰۲/۰۵") before comparing, otherwise "1404/12/5"
+        // sorts wrong against "1404/2/15".
+        return mixed.sort((a, b) =>
+          normalizePersianDate(b.date).localeCompare(normalizePersianDate(a.date))
+        ).slice(0, 7);
     }, [invoices, transactions]);
 
     // --- Components ---

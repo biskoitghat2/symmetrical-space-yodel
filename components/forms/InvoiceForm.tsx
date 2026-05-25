@@ -68,7 +68,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
     const openWindow = useWindowStore((s) => s.openWindow);
     const setPage = useWindowStore((s) => s.setPage);
     const { customers, products, addInvoice, updateInvoice, bankAccounts, checks } = useDataStore();
-    const { showToast } = useUIStore();
+    const { showToast, confirm } = useUIStore();
 
     const isEditMode = !!initialData?.id;
     const isServiceType = type === 'SERVICE';
@@ -187,12 +187,22 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
     };
 
     const handleClearAll = () => {
+        const doClear = () => {
+            setFormState({ ...INITIAL_STATE, date: new Date().toLocaleDateString('fa-IR-u-nu-latn') });
+            showToast('success', 'فاکتور پاک شد');
+            requestAnimationFrame(() => customerButtonRef.current?.focus());
+        };
         if (formState.items.length > 0 || formState.customerName) {
-            if (!confirm('فاکتور خالی شود؟')) return;
+            confirm({
+                title: 'پاک کردن فاکتور',
+                message: 'فاکتور خالی شود؟ تمامی اقلام و تغییرات از بین می‌رود.',
+                variant: 'danger',
+                confirmText: 'بله، پاک کن',
+                onConfirm: doClear,
+            });
+            return;
         }
-        setFormState({ ...INITIAL_STATE, date: new Date().toLocaleDateString('fa-IR-u-nu-latn') });
-        showToast('success', 'فاکتور پاک شد');
-        requestAnimationFrame(() => customerButtonRef.current?.focus());
+        doClear();
     };
 
     const openProductModal = (row: number) => {
@@ -350,9 +360,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
         if (formState.paidCashAmount > 0 && !formState.bankAccountId) {
             showToast('error', 'حساب بانکی برای دریافت نقدی الزامی است'); return null;
         }
-        if (totals.remained < 0) {
-            if (!confirm(`مازاد پرداخت ${Math.abs(totals.remained).toLocaleString()} ریال. ادامه می‌دهید؟`)) return null;
-        }
+        // Over-payment confirmation moved to handleSubmit so we can use the
+        // app's themed confirm() instead of the native window.confirm dialog.
 
         const customer = selectedCustomer;
         let paymentMethod: PaymentMethod = 'CREDIT';
@@ -388,6 +397,22 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
 
     const handleSubmit = async (after: 'close' | 'new' | 'print' = 'close') => {
         if (isSubmitting) return;
+        // Over-payment guard — must use the themed confirm() (not the native
+        // blocking window.confirm) so RTL/dark mode render properly.
+        if (totals.remained < 0) {
+            confirm({
+                title: 'مازاد پرداخت',
+                message: `مازاد پرداخت ${Math.abs(totals.remained).toLocaleString()} ریال. ادامه می‌دهید؟`,
+                variant: 'warning',
+                confirmText: 'بله، ادامه',
+                onConfirm: () => proceedSubmit(after),
+            });
+            return;
+        }
+        proceedSubmit(after);
+    };
+
+    const proceedSubmit = async (after: 'close' | 'new' | 'print') => {
         const inv = validateAndBuild();
         if (!inv) return;
         setIsSubmitting(true);

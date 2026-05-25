@@ -15,8 +15,10 @@ interface ConfirmOptions {
   message: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'danger' | 'info';
+  variant?: 'danger' | 'info' | 'warning';
   onConfirm: () => void;
+  /** Optional — fires when the user clicks Cancel or dismisses via Esc/backdrop. */
+  onCancel?: () => void;
 }
 
 interface UIState {

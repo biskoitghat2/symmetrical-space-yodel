@@ -6,6 +6,7 @@ import { useWindowStore } from '../store/windowStore';
 import { Search, Plus, Archive, AlertTriangle, Layers, Settings2, Edit, FileText, Activity, TrendingUp, DollarSign, Package, Clock, Tag } from 'lucide-react';
 import { Pagination } from './ui/Pagination';
 import { Select } from './ui/Select';
+import { normalizePersianDate } from '../utils/dateUtils';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -48,7 +49,10 @@ export const Inventory: React.FC = () => {
             result = result.sort((a, b) => {
                 if (!a.lastPriceUpdateDate) return 1;
                 if (!b.lastPriceUpdateDate) return -1;
-                return b.lastPriceUpdateDate.localeCompare(a.lastPriceUpdateDate);
+                // Normalize both sides — raw localeCompare on unpadded Persian dates
+                // sorts "1404/12/5" before "1404/2/15" (wrong).
+                return normalizePersianDate(b.lastPriceUpdateDate)
+                  .localeCompare(normalizePersianDate(a.lastPriceUpdateDate));
             });
         }
 

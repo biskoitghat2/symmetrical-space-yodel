@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { History, Trash2, Delete, Calculator as CalculatorIcon } from 'lucide-react';
+import { useWindowStore } from '../store/windowStore';
 
 interface Calculation {
     id: string;
@@ -13,7 +14,17 @@ export const Calculator: React.FC = () => {
     const [result, setResult] = useState('');
     const [history, setHistory] = useState<Calculation[]>([]);
     const [isResultFinal, setIsResultFinal] = useState(false);
-    
+
+    // Identify the active window so we don't steal global keystrokes
+    // (digits / Backspace / Enter / Escape) when Calculator is in the
+    // background. Without this gate, typing in any other open form
+    // would route here and `e.preventDefault()` would suppress the input.
+    const { activeWindowId, windows } = useWindowStore();
+    const isCalculatorActive = (() => {
+        const active = windows.find(w => w.id === activeWindowId);
+        return active?.type === 'CALCULATOR' && !active.isMinimized;
+    })();
+
     const displayRef = useRef<HTMLDivElement>(null);
 
     // Formats numbers within the expression string (e.g. "2000+500" -> "2,000 + 500")
@@ -116,17 +127,18 @@ export const Calculator: React.FC = () => {
         }
     }, [input]);
 
-    // Keyboard support
+    // Keyboard support — only active when Calculator is the focused window.
     useEffect(() => {
+        if (!isCalculatorActive) return;
         const handleKeyDown = (e: KeyboardEvent) => {
             const key = e.key;
-            
+
             // Numbers & Dot
             if (/[0-9.]/.test(key)) {
                 e.preventDefault(); // Prevent browser search etc
                 handleInput(key);
             }
-            
+
             // Operators
             if (['+', '-', '(', ')', '%'].includes(key)) {
                 e.preventDefault();
@@ -134,7 +146,7 @@ export const Calculator: React.FC = () => {
             }
             if (key === '*') { e.preventDefault(); handleInput('*'); }
             if (key === '/') { e.preventDefault(); handleInput('/'); }
-            
+
             // Actions
             if (key === 'Enter' || key === '=') {
                 e.preventDefault();
@@ -152,7 +164,7 @@ export const Calculator: React.FC = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [input, isResultFinal, result]); // Dependencies for closure state
+    }, [isCalculatorActive, input, isResultFinal, result]); // Dependencies for closure state
 
     const Button = ({ label, value, onClick, className = '', highlight = false, secondary = false, wide = false }: any) => (
         <button

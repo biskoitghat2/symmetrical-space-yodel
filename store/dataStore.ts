@@ -381,11 +381,25 @@ export const useDataStore = create<DataState>()((set, get) => ({
     await DatabaseService.addProductHistory(history);
     const log = createLog('CREATE', 'کالا', `افزودن کالای جدید: ${product.name}`, product.id);
     await DatabaseService.addSystemLog(log);
+
+    // Seed an OPENING_STOCK movement so reconcileAllStocks doesn't overwrite the
+    // cached stock the first time another flow (SALE/PURCHASE/...) writes a
+    // movement for this product. Migration 9 only seeded existing products.
+    let openingMovement: InventoryMovement | null = null;
+    if (product.stock && product.stock !== 0) {
+      openingMovement = createMovement(
+        product.id, product.stock, 'OPENING_STOCK',
+        'موجودی اولیه هنگام تعریف کالا',
+      );
+      await DatabaseService.addInventoryMovement(openingMovement);
+    }
+
     set((state) => {
       const newProducts = [...state.products, product].sort((a, b) => a.name.localeCompare(b.name, 'fa-IR'));
       return {
         products: newProducts,
         productHistory: [history, ...state.productHistory],
+        inventoryMovements: openingMovement ? [openingMovement, ...state.inventoryMovements] : state.inventoryMovements,
         logs: [log, ...state.logs]
       };
     });
@@ -654,6 +668,14 @@ export const useDataStore = create<DataState>()((set, get) => ({
     );
     if (hasNonInitialTransactions) {
       throw new Error(`نمی‌توان مشتری "${customer.name}" را حذف کرد. این مشتری دارای تراکنش مالی است.`);
+    }
+
+    // 4b. Block if customer is referenced by bank transactions
+    // (transactions.customerId REFERENCES customers(id) ON DELETE RESTRICT —
+    // without this guard, Tauri throws FOREIGN KEY constraint failed)
+    const hasBankTransactions = state.transactions.some(t => t.customerId === id);
+    if (hasBankTransactions) {
+      throw new Error(`نمی‌توان مشتری "${customer.name}" را حذف کرد. این مشتری در تراکنش‌های بانکی ثبت شده است.`);
     }
 
     // 5. Block if balance is non-zero (safety net)
@@ -2303,7 +2325,18 @@ export const useDataStore = create<DataState>()((set, get) => ({
         }
       }
 
-      // 5. Delete the invoice
+      // 5a. Unlink any repair_receipts that reference this invoice.
+      // repair_receipts.invoiceId REFERENCES invoices(id) ON DELETE RESTRICT —
+      // without this, Tauri throws FOREIGN KEY constraint failed for any
+      // REPAIR-type invoice that came from a repair receipt.
+      const linkedReceipts = get().repairReceipts.filter(r => r.invoiceId === id);
+      for (const r of linkedReceipts) {
+        const unlinked = { ...r, invoiceId: undefined };
+        await DatabaseService.updateRepairReceipt(unlinked);
+        console.log(`✅ Repair receipt #${r.receiptNumber} unlinked from invoice #${invoice.number}`);
+      }
+
+      // 5b. Delete the invoice
       await DatabaseService.deleteInvoice(id);
 
       // 6. Add log
@@ -2313,7 +2346,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
       console.log('✅ [END] Invoice deleted successfully');
 
       // 7. Selectively reload financials to avoid freezing
-      const [products, customers, bankAccounts, invoices, customerTransactions, transactions, checks, logs, productHistory, inventoryMovements] = await Promise.all([
+      const [products, customers, bankAccounts, invoices, customerTransactions, transactions, checks, logs, productHistory, inventoryMovements, repairReceipts] = await Promise.all([
         DatabaseService.getAllProducts(),
         DatabaseService.getAllCustomers(),
         DatabaseService.getAllBankAccounts(),
@@ -2323,9 +2356,10 @@ export const useDataStore = create<DataState>()((set, get) => ({
         DatabaseService.getAllChecks(),
         DatabaseService.getAllSystemLogs(),
         DatabaseService.getAllProductHistory(),
-        DatabaseService.getAllInventoryMovements()
+        DatabaseService.getAllInventoryMovements(),
+        DatabaseService.getAllRepairReceipts(),
       ]);
-      set({ products, customers, bankAccounts, invoices, customerTransactions, transactions, checks, logs, productHistory, inventoryMovements });
+      set({ products, customers, bankAccounts, invoices, customerTransactions, transactions, checks, logs, productHistory, inventoryMovements, repairReceipts });
     });
   },
 
@@ -2608,12 +2642,20 @@ export const useDataStore = create<DataState>()((set, get) => ({
         }
       }
 
-      // 3. Update the state with exact maps outside to prevent bugs
+      // 3. Reverse the original PRODUCTION_CONSUME / PRODUCTION_OUTPUT movements
+      // (they all carry referenceId = production.id). Without this,
+      // reconcileAllStocks would derive stock from the still-present movements
+      // and silently undo the manual reversal above on next page load.
+      await DatabaseService.deleteInventoryMovementsByRef(id);
+      const refreshedMovements = await DatabaseService.getAllInventoryMovements();
+
+      // 4. Update the state with exact maps outside to prevent bugs
       set((state) => {
         const newProducts = state.products.map(p => exactStockMap.has(p.id) ? { ...p, stock: exactStockMap.get(p.id)! } : p);
         return {
           productions: state.productions.filter(p => p.id !== id),
           products: newProducts,
+          inventoryMovements: refreshedMovements,
           logs: [createLog('DELETE', 'تولید', `حذف تولید: ${production.productName}`, id), ...state.logs]
         };
       });
@@ -2789,7 +2831,9 @@ export const useDataStore = create<DataState>()((set, get) => ({
       throw new Error(`نمی‌توان رسید تحویل داده شده "${receipt.receiptNumber}" را حذف کرد.`);
     }
 
-    // Restore used parts stock
+    // Restore used parts stock + write reversal movements so reconcileAllStocks
+    // doesn't undo the restoration on next page load.
+    const restoreMovements: InventoryMovement[] = [];
     for (const part of receipt.usedParts) {
       const product = get().products.find(p => p.id === part.productId);
       if (product) {
@@ -2805,6 +2849,14 @@ export const useDataStore = create<DataState>()((set, get) => ({
           newStock
         );
         await DatabaseService.addProductHistory(history);
+
+        const mvmt = createMovement(
+          product.id, part.quantity, 'RETURN_SALE',
+          `بازگشت قطعه (حذف رسید تعمیرات #${receipt.receiptNumber})`,
+          'INVOICE', receipt.id,
+        );
+        await DatabaseService.addInventoryMovement(mvmt);
+        restoreMovements.push(mvmt);
       }
     }
 
@@ -2908,6 +2960,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
       return {
         repairReceipts: state.repairReceipts.filter(r => r.id !== id),
         products: newProducts,
+        inventoryMovements: restoreMovements.length > 0 ? [...restoreMovements, ...state.inventoryMovements] : state.inventoryMovements,
         bankAccounts: newBankAccounts,
         transactions: newTransactions,
         customers: newCustomers,
@@ -2921,8 +2974,18 @@ export const useDataStore = create<DataState>()((set, get) => ({
     const receipt = get().repairReceipts.find(r => r.id === receiptId);
     if (!receipt) return;
 
+    // ── Validate FIRST so an insufficient-stock throw doesn't leave the
+    // receipt saved with the part already attached but no stock decrement.
+    const product = get().products.find(p => p.id === part.productId);
+    if (product) {
+      const newStock = product.stock - part.quantity;
+      if (newStock < 0) {
+        throw new Error(`موجودی کافی نیست: ${product.name} (موجودی: ${product.stock}، درخواستی: ${part.quantity})`);
+      }
+    }
+
     const updatedParts = [...receipt.usedParts, part];
-    const totalPartsCost = updatedParts.reduce((sum, p) => new Decimal(sum).plus(p.total).toNumber(), 0);
+    const totalPartsCost = updatedParts.reduce((sum, p) => moneyAdd(sum, p.total), 0);
     const updatedReceipt = {
       ...receipt,
       usedParts: updatedParts,
@@ -2932,13 +2995,9 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
     await DatabaseService.updateRepairReceipt(updatedReceipt);
 
-    // Update product stock
-    const product = get().products.find(p => p.id === part.productId);
+    let movement: InventoryMovement | null = null;
     if (product) {
       const newStock = product.stock - part.quantity;
-      if (newStock < 0) {
-        throw new Error(`موجودی کافی نیست: ${product.name} (موجودی: ${product.stock}، درخواستی: ${part.quantity})`);
-      }
       const updatedProduct = { ...product, stock: newStock };
       await DatabaseService.updateProduct(updatedProduct);
 
@@ -2950,11 +3009,21 @@ export const useDataStore = create<DataState>()((set, get) => ({
         newStock
       );
       await DatabaseService.addProductHistory(history);
+
+      // Ledger row — without this, reconcileAllStocks would revert the
+      // stock decrement on next page load.
+      movement = createMovement(
+        product.id, -part.quantity, 'SALE',
+        `قطعه مصرفی رسید تعمیرات #${receipt.receiptNumber}`,
+        'INVOICE', receipt.id,
+      );
+      await DatabaseService.addInventoryMovement(movement);
     }
 
     set((state) => ({
       repairReceipts: state.repairReceipts.map(r => r.id === receiptId ? updatedReceipt : r),
-      products: state.products.map(p => p.id === part.productId ? { ...p, stock: p.stock - part.quantity } : p)
+      products: state.products.map(p => p.id === part.productId ? { ...p, stock: p.stock - part.quantity } : p),
+      inventoryMovements: movement ? [movement, ...state.inventoryMovements] : state.inventoryMovements,
     }));
   },
 
@@ -2976,7 +3045,8 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
     await DatabaseService.updateRepairReceipt(updatedReceipt);
 
-    // Restore product stock
+    // Restore product stock + write reversal movement
+    let reverseMovement: InventoryMovement | null = null;
     if (removedPart) {
       const product = get().products.find(p => p.id === removedPart.productId);
       if (product) {
@@ -2992,6 +3062,14 @@ export const useDataStore = create<DataState>()((set, get) => ({
           newStock
         );
         await DatabaseService.addProductHistory(history);
+
+        // Reversal ledger row — required so reconcile doesn't undo the restore.
+        reverseMovement = createMovement(
+          product.id, removedPart.quantity, 'RETURN_SALE',
+          `بازگشت قطعه از رسید تعمیرات #${receipt.receiptNumber}`,
+          'INVOICE', receipt.id,
+        );
+        await DatabaseService.addInventoryMovement(reverseMovement);
       }
     }
 
@@ -2999,18 +3077,14 @@ export const useDataStore = create<DataState>()((set, get) => ({
       repairReceipts: state.repairReceipts.map(r => r.id === receiptId ? updatedReceipt : r),
       products: removedPart ? state.products.map(p =>
         p.id === removedPart.productId ? { ...p, stock: p.stock + removedPart.quantity } : p
-      ) : state.products
+      ) : state.products,
+      inventoryMovements: reverseMovement ? [reverseMovement, ...state.inventoryMovements] : state.inventoryMovements,
     }));
   },
 
   convertToInvoice: async (receiptId, bankAccountId, paidCashAmount, linkedCheckIds) => {
     const receipt = get().repairReceipts.find(r => r.id === receiptId);
     if (!receipt || receipt.status !== 'REPAIRED' || receipt.invoiceId) return null;
-
-    // Immediately update local state to prevent duplicate clicks (race condition)
-    set(state => ({
-      repairReceipts: state.repairReceipts.map(r => r.id === receiptId ? { ...r, status: 'DELIVERED', invoiceId: 'PENDING' } : r)
-    }));
 
     const state = get();
     const invoiceNumber = Math.max(0, ...state.invoices.map(i => i.number)) + 1;
@@ -3030,16 +3104,16 @@ export const useDataStore = create<DataState>()((set, get) => ({
       });
     }
 
-    const remainedAmount = new Decimal(totalAmount)
-      .minus(receipt.depositAmount || 0)
-      .minus(cashAmount)
-      .minus(checkAmount)
-      .toNumber();
+    const remainedAmount = moneySub(
+      moneySub(moneySub(totalAmount, receipt.depositAmount || 0), cashAmount),
+      checkAmount,
+    );
 
     // Build invoice items: used parts + labor cost row
     const invoiceItems: InvoiceItem[] = [...receipt.usedParts];
 
-    // Check stock for used parts
+    // ── Validate stock FIRST (before any state mutation or DB write) so an
+    // insufficient-stock throw doesn't leave the UI showing DELIVERED.
     for (const part of receipt.usedParts) {
       const product = state.products.find(p => p.id === part.productId);
       if (product && product.stock < part.quantity) {
@@ -3160,15 +3234,16 @@ export const useDataStore = create<DataState>()((set, get) => ({
       }
     }
 
-    // Link any checks 
+    // Link any checks — write the FK on the proper column (refInvoiceId, not invoiceId)
+    // and keep the existing CheckStatus (the prior `'RECEIVED' as CheckStatus` cast
+    // hid the fact that RECEIVED is not in the enum 'PENDING' | 'PASSED' | 'RETURNED').
     if (linkedCheckIds && linkedCheckIds.length > 0) {
       for (const checkId of linkedCheckIds) {
         const check = state.checks.find(c => c.id === checkId);
         if (check) {
-          const updatedCheck = {
+          const updatedCheck: Check = {
             ...check,
-            invoiceId: invoice.id,
-            status: 'RECEIVED' as CheckStatus
+            refInvoiceId: invoice.id,
           };
           await DatabaseService.updateCheck(updatedCheck);
         }
@@ -3214,7 +3289,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
       let newChecks = state.checks;
       if (linkedCheckIds && linkedCheckIds.length > 0) {
         const checkIdSet = new Set(linkedCheckIds);
-        newChecks = state.checks.map(c => checkIdSet.has(c.id) ? { ...c, invoiceId: invoice.id, status: 'RECEIVED' as CheckStatus } : c);
+        newChecks = state.checks.map(c => checkIdSet.has(c.id) ? { ...c, refInvoiceId: invoice.id } : c);
       }
 
       return {
