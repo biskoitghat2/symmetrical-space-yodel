@@ -41,6 +41,17 @@ export class DatabaseService {
       // ── Web / non-Tauri mode ──────────────────────────────────────────────
       const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
       if (!isTauri) {
+        // ── Server mode (Express + better-sqlite3, window flag injected by server.js) ──
+        if (typeof window !== 'undefined' && (window as any).__HESABFLOW_SERVER === true) {
+          console.log('🖥️ Server mode — SQLite via local HTTP API');
+          const { ServerDatabase } = await import('./ServerDatabase');
+          this.db = new ServerDatabase() as any;
+          await this.initDatabase();
+          await this.runMigrations();
+          console.log('✅ ServerDatabase ready');
+          return;
+        }
+
         console.log('🌐 Tauri not detected — using in-memory IndexedDB storage (web mode)');
         const { WebDatabase } = await import('./WebDatabase');
         const webDb = new WebDatabase();
@@ -1047,12 +1058,22 @@ export class DatabaseService {
 
   static async updateBankAccount(account: BankAccount): Promise<void> {
     await this.ensureInitialized();
+    // If caller didn't supply openingBalance, read the existing value rather than
+    // silently zeroing it (which would break reconciliation).
+    let openingBalance = account.openingBalance;
+    if (openingBalance === undefined || openingBalance === null) {
+      const rows = await this.db!.select<[{ openingBalance: number }]>(
+        `SELECT openingBalance FROM bank_accounts WHERE id = $1`,
+        [account.id]
+      );
+      openingBalance = rows[0]?.openingBalance ?? 0;
+    }
     await this.db.execute(
       `UPDATE bank_accounts SET title=$1, accountType=$2, bankName=$3, accountNumber=$4,
        shaba=$5, balance=$6, openingBalance=$7, color=$8, cardHolder=$9 WHERE id=$10`,
       [
         account.title, account.accountType, account.bankName, account.accountNumber,
-        account.shaba || null, account.balance, account.openingBalance ?? 0,
+        account.shaba || null, account.balance, openingBalance,
         account.color, account.cardHolder || null, account.id
       ]
     );
@@ -1134,7 +1155,7 @@ export class DatabaseService {
        ), 0) AS derived
        FROM transactions
        WHERE accountId = $1 OR toAccountId = $1`,
-      [accountId, accountId, accountId, accountId, accountId, accountId]
+      [accountId]
     );
     const openingRows = await this.db!.select<[{ openingBalance: number }]>(
       `SELECT openingBalance FROM bank_accounts WHERE id = $1`,
@@ -1442,6 +1463,14 @@ export class DatabaseService {
     await this.db!.execute(
       'DELETE FROM inventory_movements WHERE referenceId = $1',
       [referenceId]
+    );
+  }
+
+  static async deleteInventoryMovementsByProduct(productId: string): Promise<void> {
+    await this.ensureInitialized();
+    await this.db!.execute(
+      'DELETE FROM inventory_movements WHERE productId = $1',
+      [productId]
     );
   }
 
@@ -1880,72 +1909,207 @@ export class DatabaseService {
     return await join(appData, 'hesabflow.db');
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Backup & Restore
+  //
+  // Two operating modes:
+  //   • Tauri  → backup is a .db file (direct SQLite copy). Fastest, full fidelity.
+  //   • Web    → backup is a .json file (IndexedDB dump). Only path that works
+  //              in the browser, since file paths aren't real there.
+  //
+  // The Tauri path also writes a safety backup of the *current* DB before
+  // overwriting it, so a corrupt restore file can be recovered manually.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** True if running inside the Tauri desktop shell. */
+  private static get isTauri(): boolean {
+    return typeof window !== 'undefined' && '__TAURI__' in window;
+  }
+
+  /** Validates that a file at the given path is a real SQLite database
+   *  by checking its 16-byte magic header. */
+  private static async isValidSQLiteFile(path: string): Promise<boolean> {
+    try {
+      const { readFile } = await import('@tauri-apps/plugin-fs');
+      const bytes = await readFile(path);
+      if (bytes.length < 16) return false;
+      // SQLite header: "SQLite format 3\0"
+      const expected = [83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0];
+      for (let i = 0; i < 16; i++) if (bytes[i] !== expected[i]) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   static async createBackup(destinationPath: string): Promise<void> {
+    if (!this.isTauri) {
+      throw new Error('پشتیبان‌گیری از فایل در حالت مرورگر در دسترس نیست — از خروجی JSON استفاده کنید.');
+    }
     try {
       const { copyFile, exists } = await import('@tauri-apps/plugin-fs');
       await this.ensureInitialized();
 
-      // Ensure the source database file exists
       const dbPath = await this.getDatabasePath();
       if (!(await exists(dbPath))) {
-        throw new Error('Database file not found at expected path.');
+        throw new Error('فایل دیتابیس پیدا نشد.');
       }
 
-      console.log('📤 Creating backup...');
-
-      // Flush all pending WAL changes back into the main .db file
-      // before copying. This makes the .db file a full, consistent snapshot.
-      // This is safe and does not close the connection.
+      // Flush WAL into the main .db file so the copy is a complete snapshot.
       await this.db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
-      console.log('✅ WAL checkpointed into main DB before copy');
 
-      // Copy the main (now fully flushed) database file to the destination.
-      // No need to copy .wal / .shm since checkpoint merged everything.
       await copyFile(dbPath, destinationPath);
       console.log(`✅ Backup created at: ${destinationPath}`);
-
     } catch (error: any) {
       console.error('❌ Backup failed:', error);
-      throw new Error(`خطا در ایجاد پشتیبان: ${error.message}`);
+      throw new Error(`خطا در ایجاد پشتیبان: ${error?.message ?? error}`);
     }
   }
 
   static async restoreBackup(sourcePath: string): Promise<void> {
+    if (!this.isTauri) {
+      throw new Error('بازگردانی از فایل در حالت مرورگر در دسترس نیست — از ورودی JSON استفاده کنید.');
+    }
+
+    const { copyFile, remove, exists, stat } = await import('@tauri-apps/plugin-fs');
+    const destinationPath = await this.getDatabasePath();
+
+    // ── 1. Validate the chosen file before touching anything ────────────────
+    if (!(await exists(sourcePath))) {
+      throw new Error('فایل پشتیبان انتخاب‌شده پیدا نشد.');
+    }
+    const sourceStat = await stat(sourcePath);
+    if (!sourceStat.size || sourceStat.size < 100) {
+      throw new Error('فایل پشتیبان خالی یا ناقص است.');
+    }
+    if (!(await this.isValidSQLiteFile(sourcePath))) {
+      throw new Error('فایل انتخاب‌شده یک پایگاه‌داده SQLite معتبر نیست.');
+    }
+
+    // ── 2. Safety backup of current DB (so we can roll back on failure) ─────
+    const safetyBackupPath = `${destinationPath}.before-restore-${Date.now()}.db`;
+    let safetyBackupCreated = false;
     try {
-      const { copyFile } = await import('@tauri-apps/plugin-fs');
-      const destinationPath = await this.getDatabasePath();
-
-      console.log('📥 Restoring backup...');
-      console.log('Source:', sourcePath);
-      console.log('Destination:', destinationPath);
-
-      // Close current database connection to release file locks
-      await this.close();
-
-      // In WAL mode, SQLite leaves behind .wal and .shm files. 
-      // If we replace the main .db file but leave the old .wal file, SQLite will try to 
-      // apply the old WAL changes to the new database, corrupting it or wiping it out.
-      // We MUST delete these temporary files before restoring the main db file.
-      const { remove, exists } = await import('@tauri-apps/plugin-fs');
-      if (await exists(`${destinationPath}-wal`)) {
-        await remove(`${destinationPath}-wal`);
-        console.log('🗑️ Deleted old WAL file');
+      if (await exists(destinationPath)) {
+        await this.ensureInitialized();
+        try { await this.db!.execute('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+        await copyFile(destinationPath, safetyBackupPath);
+        safetyBackupCreated = true;
+        console.log(`🛟 Safety backup created at: ${safetyBackupPath}`);
       }
-      if (await exists(`${destinationPath}-shm`)) {
-        await remove(`${destinationPath}-shm`);
-        console.log('🗑️ Deleted old SHM file');
-      }
+    } catch (e) {
+      console.warn('⚠️ Could not create safety backup (continuing anyway):', e);
+    }
 
-      // Now it is safe to copy the backup file over the main database location
+    // ── 3. Close current connection so we can replace the file ──────────────
+    await this.close();
+
+    try {
+      // Delete stale WAL/SHM so SQLite doesn't apply the OLD log to the NEW file
+      if (await exists(`${destinationPath}-wal`)) await remove(`${destinationPath}-wal`);
+      if (await exists(`${destinationPath}-shm`)) await remove(`${destinationPath}-shm`);
+
+      // ── 4. Overwrite main DB with the chosen backup ───────────────────────
       await copyFile(sourcePath, destinationPath);
-      console.log('✅ Backup restored successfully');
 
-      // Reinitialize database
+      // ── 5. Reinitialize ───────────────────────────────────────────────────
       await this.initialize();
-      console.log('✅ Database reinitialized');
+      console.log('✅ Backup restored successfully');
     } catch (error) {
-      console.error('❌ Restore failed:', error);
+      console.error('❌ Restore failed mid-flight, rolling back:', error);
+      // Roll back to the safety backup if we managed to create one
+      if (safetyBackupCreated) {
+        try {
+          if (await exists(`${destinationPath}-wal`)) await remove(`${destinationPath}-wal`);
+          if (await exists(`${destinationPath}-shm`)) await remove(`${destinationPath}-shm`);
+          await copyFile(safetyBackupPath, destinationPath);
+          await this.initialize();
+          throw new Error(`بازگردانی شکست خورد. اطلاعات قبلی شما بازگردانده شد. (${error})`);
+        } catch (rollbackError) {
+          throw new Error(
+            `بازگردانی و بازگشت به حالت قبل هر دو شکست خورد. فایل امن در: ${safetyBackupPath}`
+          );
+        }
+      }
       throw new Error(`خطا در بازگردانی پشتیبان: ${error}`);
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // JSON backup (works in both Tauri and web modes — needed for browser).
+  //
+  // In web mode, IndexedDB stores the WebDatabase snapshot as a single
+  // serialized JSON string under STORAGE_KEY. We expose the same JSON here
+  // so the user can download/upload it as a .json file.
+  //
+  // Format:
+  //   {
+  //     "_meta": { "version": 1, "createdAt": "...", "mode": "web"|"tauri" },
+  //     "<tableName>": [ ...rows ]
+  //   }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  private static readonly BACKUP_TABLES = [
+    'settings', 'categories', 'units', 'customers', 'bank_accounts', 'products',
+    'productions', 'product_history', 'customer_transactions', 'transactions',
+    'checks', 'invoices', 'tasks', 'system_logs', 'calendar_events',
+    'repair_receipts', 'repair_price_templates', 'project_notes',
+    'inventory_movements',
+  ];
+
+  static async exportToJSON(): Promise<string> {
+    await this.ensureInitialized();
+    const dump: Record<string, any> = {
+      _meta: {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        mode: this.isTauri ? 'tauri' : 'web',
+      },
+    };
+    for (const table of this.BACKUP_TABLES) {
+      try {
+        dump[table] = await this.db!.select<any[]>(`SELECT * FROM ${table}`);
+      } catch (e) {
+        console.warn(`⚠️ Skipping table ${table} during export:`, e);
+        dump[table] = [];
+      }
+    }
+    return JSON.stringify(dump, null, 2);
+  }
+
+  static async importFromJSON(jsonText: string): Promise<void> {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      throw new Error('فایل JSON معتبر نیست.');
+    }
+    if (!parsed || typeof parsed !== 'object' || !parsed._meta) {
+      throw new Error('ساختار فایل پشتیبان قابل تشخیص نیست.');
+    }
+
+    await this.ensureInitialized();
+
+    // Clear existing data (respecting FK order)
+    await this.clearAllData();
+
+    // Reverse the clear order so parents are inserted before children
+    const insertOrder = [...this.BACKUP_TABLES];
+    for (const table of insertOrder) {
+      const rows: any[] = Array.isArray(parsed[table]) ? parsed[table] : [];
+      if (rows.length === 0) continue;
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+        const values = cols.map(c => row[c]);
+        const sql = `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`;
+        try {
+          await this.db!.execute(sql, values);
+        } catch (e) {
+          console.warn(`⚠️ Skipped row in ${table}:`, e);
+        }
+      }
+    }
+    console.log('✅ JSON backup restored');
   }
 }

@@ -1,0 +1,108 @@
+name: Build & Release Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'           # git tag v1.0.0 && git push --tags
+  workflow_dispatch:   # manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write      # required for creating GitHub Releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Build React → dist/
+      - name: Build frontend
+        run: npm run build
+
+      # Package server.js (ESM, no top-level-await) directly with pkg
+      # --no-bytecode + --public-packages: required for ESM entry point in pkg 5.8+
+      - name: Package as .exe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          npx pkg server.js `
+            --target node18-win-x64 `
+            --output release\hesabflow.exe `
+            --no-bytecode `
+            --public-packages "*"
+          Copy-Item "node_modules\better-sqlite3\build\Release\better_sqlite3.node" "release\"
+
+      # Verify both files exist before zipping
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          $exe  = "release\hesabflow.exe"
+          $node = "release\better_sqlite3.node"
+          if (-not (Test-Path $exe))  { Write-Error "hesabflow.exe not found!"; exit 1 }
+          if (-not (Test-Path $node)) { Write-Error "better_sqlite3.node not found!"; exit 1 }
+          $exeMB   = [math]::Round((Get-Item $exe).length  / 1MB, 1)
+          $nodeMB  = [math]::Round((Get-Item $node).length / 1MB, 1)
+          Write-Host "hesabflow.exe:       $exeMB MB"
+          Write-Host "better_sqlite3.node: $nodeMB MB"
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path release\hesabflow.exe, release\better_sqlite3.node `
+            -DestinationPath release\HesabFlow-Windows.zip `
+            -Force
+          $zipMB = [math]::Round((Get-Item "release\HesabFlow-Windows.zip").length / 1MB, 1)
+          Write-Host "HesabFlow-Windows.zip: $zipMB MB"
+
+      # Upload as artifact (available on every push, not just tags)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HesabFlow-Windows
+          path: release\HesabFlow-Windows.zip
+          retention-days: 30
+
+      # Create GitHub Release (only on tag push)
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release\HesabFlow-Windows.zip
+          fail_on_unmatched_files: true
+          body: |
+            ## حسابفلو — نسخه Windows
+
+            ### نصب
+            1. فایل `HesabFlow-Windows.zip` را دانلود کنید
+            2. محتویات آن را در یک پوشه (مثلاً `D:\HesabFlow`) استخراج کنید
+            3. مطمئن شوید هر دو فایل زیر در کنار هم هستند:
+               - `hesabflow.exe`
+               - `better_sqlite3.node`
+            4. روی `hesabflow.exe` دوبار کلیک کنید
+            5. مرورگر به آدرس `http://localhost:3939` باز می‌شود
+
+            ### اولین اجرا
+            در اولین اجرا صفحه راه‌اندازی نشان داده می‌شود.
+            مسیر ذخیره دیتابیس و بک‌آپ را وارد کنید (مثلاً `D:\HesabFlow\Data`).
+
+            ### خروج ایمن
+            برای خروج تب مرورگر را ببندید — بک‌آپ شمسی به‌صورت خودکار گرفته می‌شود.
+
+            ### پیش‌نیازها
+            - Windows 10 / Windows 11 (64-bit)
+            - Chrome، Firefox یا Edge نصب‌شده
+            - **نیازی به Node.js یا هیچ نرم‌افزار دیگری نیست**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
