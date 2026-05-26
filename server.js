@@ -26,25 +26,33 @@ const _require = createRequire(import.meta.url);
 const PORT       = 3939;
 
 // ── App directory ──────────────────────────────────────────────────────────
-// When running as pkg .exe → folder containing the .exe
-// When running via `node server.js` → cwd (project root)
-const APP_DIR    = typeof process.pkg !== 'undefined'
-  ? dirname(process.execPath)
-  : process.cwd();
+// IS_PKG  → true when bundled by pkg / @yao-pkg/pkg into an .exe
+// APP_DIR → real on-disk folder containing the executable (Windows-native via
+//           process.execPath). In dev mode it falls back to cwd.
+const IS_PKG  = typeof process.pkg !== 'undefined';
+const APP_DIR = IS_PKG ? dirname(process.execPath) : process.cwd();
 
 const CONFIG_PATH = join(APP_DIR, 'config.json');
 const DIST        = join(__dirname, 'dist');
 
 // ── Load better-sqlite3 ────────────────────────────────────────────────────
+// In a pkg bundle the native .node addon CANNOT live inside the snapshot —
+// Node refuses to dlopen() a file that does not exist on the real disk.
+// So we ship `better_sqlite3.node` next to `hesabflow.exe` and require it
+// from there via an absolute Windows path.
 let Database;
-if (typeof process.pkg !== 'undefined') {
+if (IS_PKG) {
   const nodePath = join(APP_DIR, 'better_sqlite3.node');
   if (!existsSync(nodePath)) {
-    console.error(`❌  better_sqlite3.node not found: ${nodePath}`);
+    console.error(
+      `\n[FATAL] better_sqlite3.node was not found at:\n  ${nodePath}\n\n` +
+      `This file MUST be in the same folder as hesabflow.exe.\n` +
+      `Extract the full HesabFlow-Windows.zip — do not move the .exe alone.\n`
+    );
     process.exit(1);
   }
-  const req = createRequire(nodePath);
-  Database = req(nodePath);
+  // createRequire anchored at the .node path → Node loads it as a native addon
+  Database = createRequire(nodePath)(nodePath);
 } else {
   Database = _require('better-sqlite3');
 }

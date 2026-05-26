@@ -11,7 +11,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "server": "node server.js",
-    "build:exe": "npm run build && pkg server.js --target node18-win-x64 --output release/hesabflow.exe && cp node_modules/better-sqlite3/build/Release/better_sqlite3.node release/"
+    "build:exe": "npm run build && pkg server.js --target node20-win-x64 --output release/hesabflow.exe --public-packages \"*\" --no-bytecode && cp node_modules/better-sqlite3/build/Release/better_sqlite3.node release/"
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
@@ -53,7 +53,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.24",
     "esbuild": "^0.28.0",
-    "pkg": "^5.8.1",
+    "@yao-pkg/pkg": "^5.16.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",
