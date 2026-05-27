@@ -32,22 +32,42 @@ jobs:
       - name: Build frontend (Vite)
         run: npm run build
 
-      # ── 3. Install @yao-pkg/pkg (ESM-capable fork of vercel/pkg) ───────
-      # The original `pkg` (vercel) is archived and cannot compile ESM
-      # source files (server.js uses `import`). @yao-pkg/pkg fixes this.
+      # ── 3. Bundle ESM server.js → CJS via esbuild ──────────────────────
+      # @yao-pkg/pkg still uses Babel which cannot parse `import.meta.url`.
+      # esbuild rewrites import.meta.url → require('url').pathToFileURL(...)
+      # and emits a single CJS file that pkg's bytecode compiler accepts.
+      # better-sqlite3 is marked external because we ship its .node file
+      # alongside the EXE and load it from disk at runtime.
+      - name: Bundle server.js → server.bundle.cjs (esbuild)
+        shell: pwsh
+        run: |
+          npx --yes esbuild server.js `
+            --bundle `
+            --platform=node `
+            --target=node20 `
+            --format=cjs `
+            --external:better-sqlite3 `
+            --outfile=server.bundle.cjs
+          if (-not (Test-Path "server.bundle.cjs")) {
+            Write-Error "esbuild did NOT produce server.bundle.cjs"
+            exit 1
+          }
+          $sizeKB = [math]::Round((Get-Item "server.bundle.cjs").Length / 1KB, 1)
+          Write-Host "OK  server.bundle.cjs : $sizeKB KB"
+
+      # ── 4. Install @yao-pkg/pkg (ESM-capable fork of vercel/pkg) ───────
       - name: Install yao-pkg
         run: npm install -g @yao-pkg/pkg@5.16.1
 
-      # ── 4. Package server.js → hesabflow.exe ───────────────────────────
-      - name: Package server.js as Windows EXE
+      # ── 5. Package server.bundle.cjs → hesabflow.exe ───────────────────
+      - name: Package server.bundle.cjs as Windows EXE
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          pkg server.js `
+          pkg server.bundle.cjs `
             --target node20-win-x64 `
             --output release\hesabflow.exe `
-            --public-packages "*" `
-            --no-bytecode
+            --public-packages "*"
           if (-not (Test-Path "release\hesabflow.exe")) {
             Write-Error "pkg did NOT produce hesabflow.exe"
             exit 1

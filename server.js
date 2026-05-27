@@ -18,12 +18,20 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 
-// Works in ESM (node server.js) and pkg bundle (import.meta.url points to virtual FS)
-const __dirname  = dirname(fileURLToPath(import.meta.url));
+// __filename / __dirname / require resolution that works across THREE modes:
+//   1) Pure ESM         (dev: `node server.js`)         → derive from import.meta.url
+//   2) esbuild-CJS      (production bundle before pkg)  → __filename is injected
+//   3) pkg-bundled CJS  (final hesabflow.exe)           → __filename is the snapshot path
+// We must NOT touch `import.meta` when CJS already provides __filename, because
+// esbuild rewrites `import.meta` → `{}` and reading `.url` would crash at load.
+const __thisFile = (typeof __filename !== 'undefined')
+  ? __filename
+  : fileURLToPath(import.meta.url);
+const __thisDir  = dirname(__thisFile);
 
-// Synchronous require — eliminates top-level await, works in pkg + pure ESM
-const _require = createRequire(import.meta.url);
-const PORT       = 3939;
+// Synchronous require — works in pure ESM AND in CJS bundles
+const _require = createRequire(__thisFile);
+const PORT     = 3939;
 
 // ── App directory ──────────────────────────────────────────────────────────
 // IS_PKG  → true when bundled by pkg / @yao-pkg/pkg into an .exe
@@ -33,7 +41,7 @@ const IS_PKG  = typeof process.pkg !== 'undefined';
 const APP_DIR = IS_PKG ? dirname(process.execPath) : process.cwd();
 
 const CONFIG_PATH = join(APP_DIR, 'config.json');
-const DIST        = join(__dirname, 'dist');
+const DIST        = join(__thisDir, 'dist');
 
 // ── Load better-sqlite3 ────────────────────────────────────────────────────
 // In a pkg bundle the native .node addon CANNOT live inside the snapshot —
@@ -54,7 +62,10 @@ if (IS_PKG) {
   // createRequire anchored at the .node path → Node loads it as a native addon
   Database = createRequire(nodePath)(nodePath);
 } else {
-  Database = _require('better-sqlite3');
+  // Dynamic name so pkg's static analyzer does NOT pull better-sqlite3 into
+  // the snapshot. This branch only runs during dev (`node server.js`).
+  const bsName = ['better', 'sqlite3'].join('-');
+  Database = _require(bsName);
 }
 
 // ── Runtime state ──────────────────────────────────────────────────────────
