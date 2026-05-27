@@ -14,8 +14,11 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
         strictPort: true,
       },
-      // Tauri expects a relative base path
-      base: isTauri ? './' : '/',
+      // Tauri serves the frontend from a custom protocol; always use a
+      // relative base so assets resolve correctly inside WebView2. (Tauri's
+      // CI env doesn't always set TAURI_PLATFORM during `tauri build`, so
+      // we no longer gate on it.)
+      base: './',
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
@@ -28,7 +31,7 @@ export default defineConfig(({ mode }) => {
       },
       build: {
         // Tauri uses Chromium-based webview which supports all modern features
-        target: isTauri ? 'esnext' : 'modules',
+        target: 'esnext',
         minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
         sourcemap: !!process.env.TAURI_DEBUG,
         // Optimize chunk size for faster loading
