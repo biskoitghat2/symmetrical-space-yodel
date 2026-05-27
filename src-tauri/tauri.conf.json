@@ -52,11 +52,11 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
-        "languages": ["English", "Persian"],
+        "languages": ["English"],
         "displayLanguageSelector": false
       },
       "wix": {
-        "language": ["en-US", "fa-IR"]
+        "language": ["en-US"]
       }
     }
   },
