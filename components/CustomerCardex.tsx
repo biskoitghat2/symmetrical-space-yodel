@@ -218,7 +218,7 @@ export const CustomerCardex: React.FC<CustomerCardexProps> = ({ customerId }) =>
                                 <div className="grid grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-300 mb-3">
                                     <div>شماره: <span className="font-mono font-bold text-gray-900 dark:text-white">{linkedCheck.number}</span></div>
                                     <div>بانک: <span className="font-bold text-gray-900 dark:text-white">{linkedCheck.bank}</span></div>
-                                    <div>سررسید: <span className="font-mono font-bold text-gray-900 dark:text-white">{linkedCheck.dueDate}</span></div>
+                                    <div>سررسید: <span className="font-date font-bold text-gray-900 dark:text-white">{linkedCheck.dueDate}</span></div>
                                     <div>وضعیت: <span className="font-bold text-gray-900 dark:text-white">{linkedCheck.status === 'PASSED' ? 'پاس شده' : linkedCheck.status === 'RETURNED' ? 'برگشتی' : 'در جریان'}</span></div>
                                 </div>
                                 {linkedCheck.images && linkedCheck.images.length > 0 && (
@@ -296,7 +296,7 @@ export const CustomerCardex: React.FC<CustomerCardexProps> = ({ customerId }) =>
                                 <span className={`font-bold ${check.type === 'receivable' ? 'text-emerald-600' : 'text-red-600'}`}>
                                     {check.type === 'receivable' ? 'دریافتی' : 'پرداختی'}
                                 </span>
-                                <span className="font-mono text-[10px] text-gray-500">{check.dueDate}</span>
+                                <span className="font-date text-[10px] text-gray-500">{check.dueDate}</span>
                             </div>
                             <div className="font-mono font-bold text-gray-800 dark:text-gray-200">{check.amount.toLocaleString('en-US')}</div>
                         </div>

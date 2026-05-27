@@ -54,7 +54,7 @@ export const RepairReceiptPrintModal: React.FC<RepairReceiptPrintModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4 animate-fade-in">
       <div className="bg-white dark:bg-surface rounded-lg shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col animate-modal-open">
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-neutral-800">

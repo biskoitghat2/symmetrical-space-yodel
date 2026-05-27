@@ -5,7 +5,7 @@ import { useWindowStore } from '../../store/windowStore';
 import { useDataStore } from '../../store/dataStore';
 import { useUIStore } from '../../store/uiStore';
 import { InvoiceType, Invoice, InvoiceItem, Product, PaymentMethod, Check } from '../../types';
-import { calcItemTotal, calcItemProfit, moneySum, moneySub } from '../../utils/money';
+import { calcItemTotal, calcItemProfit, moneySum, moneySub, moneyAdd } from '../../utils/money';
 import { Select } from '../ui/Select';
 import DatePicker from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
@@ -380,7 +380,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
             dueDate: formState.dueDate || undefined,
             items: formState.items,
             totalAmount: totals.afterDiscount,
-            totalDiscount: totals.itemsDiscount + formState.finalDiscount,
+            totalDiscount: moneyAdd(totals.itemsDiscount, formState.finalDiscount),
             totalTax: totals.itemsTax,
             totalProfit: totals.itemsProfit,
             paymentMethod,
@@ -605,7 +605,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                         </thead>
                         <tbody>
                             {formState.items.map((item, rowIndex) => {
-                                const itemProfit = (item.unitPrice - item.buyPriceSnapshot) * item.quantity;
+                                const itemProfit = calcItemProfit(item.unitPrice, item.buyPriceSnapshot, item.quantity);
                                 const productInfo = products.find(p => p.id === item.productId);
                                 const lowStock = productInfo && (type === 'SALE' || type === 'WASTE' || type === 'RETURN_SALE') && productInfo.stock < item.quantity;
                                 const isActive = activeCell?.row === rowIndex;

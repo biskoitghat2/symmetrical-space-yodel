@@ -78,7 +78,7 @@ export const NotificationPanel: React.FC = () => {
                                                 <h4 className={`text-xs font-bold ${notif.isRead ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
                                                     {notif.title}
                                                 </h4>
-                                                <span className="text-[10px] text-gray-400 font-mono">{notif.date}</span>
+                                                <span className="text-[10px] text-gray-400 font-date">{notif.date}</span>
                                             </div>
                                             <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
                                                 {notif.message}

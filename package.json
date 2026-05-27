@@ -1,7 +1,7 @@
 {
   "name": "hesab-flow",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,19 +9,17 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "server": "node server.js",
-    "build:exe": "npm run build && pkg server.js --target node20-win-x64 --output release/hesabflow.exe --public-packages \"*\" --no-bytecode && cp node_modules/better-sqlite3/build/Release/better_sqlite3.node release/"
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@google/genai": "^1.41.0",
-    "@tauri-apps/api": "^2.10.1",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-fs": "^2.4.5",
-    "@tauri-apps/plugin-sql": "^2.3.2",
-    "better-sqlite3": "^12.10.0",
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-sql": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "decimal.js": "^10.6.0",
-    "express": "^5.2.1",
     "html-to-image": "1.11.11",
     "idb-keyval": "^6.2.2",
     "jspdf": "^4.1.0",
@@ -36,24 +34,11 @@
     "xlsx": "^0.18.5",
     "zustand": "^5.0.11"
   },
-  "pkg": {
-    "assets": [
-      "dist/**/*"
-    ],
-    "targets": [
-      "node18-win-x64"
-    ],
-    "outputPath": "release"
-  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.24",
-    "esbuild": "^0.28.0",
-    "@yao-pkg/pkg": "^5.16.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",

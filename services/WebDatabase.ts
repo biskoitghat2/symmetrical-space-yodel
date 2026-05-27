@@ -12,7 +12,7 @@ const STORAGE_KEY = 'hesab-flow-webdb-v1';
 // Columns that all migration checks should see as "already existing"
 const KNOWN_COLUMNS = [
   'id','image','images','refInvoiceId','linkedCheckIds',
-  'refId','refType','unit','openingBalance','barcode',
+  'refId','refType','unit','openingBalance',
   'pricingStrategy','photos','notes',
   'isDecimal','isBuiltIn','creditLimit','isGuest',
 ];

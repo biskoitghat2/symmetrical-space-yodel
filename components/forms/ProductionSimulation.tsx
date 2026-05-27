@@ -5,6 +5,7 @@ import { useWindowStore } from '../../store/windowStore';
 import { useDataStore } from '../../store/dataStore';
 import { InvoiceItem, Product, ProductionCost } from '../../types';
 import { Search, Plus, Trash2, X, Calculator, FlaskConical, DollarSign, RefreshCw } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 
 interface ProductionSimulationProps {
     windowId: string;
@@ -218,13 +219,7 @@ export const ProductionSimulation: React.FC<ProductionSimulationProps> = ({ wind
                                 onChange={e => setCostAmount(e.target.value.replace(/,/g, ''))}
                             />
                             <div className="flex items-center gap-1 border border-gray-300 dark:border-neutral-700 px-2 bg-gray-50 dark:bg-neutral-900">
-                                <input
-                                    type="checkbox"
-                                    id="isInternal"
-                                    checked={costIsInternal}
-                                    onChange={e => setCostIsInternal(e.target.checked)}
-                                />
-                                <label htmlFor="isInternal" className="text-xs text-gray-600 dark:text-gray-400 cursor-pointer select-none">داخلی؟</label>
+                                <Toggle checked={costIsInternal} onChange={setCostIsInternal} label="داخلی؟" />
                             </div>
                             <button onClick={handleAddCost} className="px-3 bg-blue-600 text-white text-xs font-bold rounded hover:bg-blue-700">
                                 <Plus size={14} />
@@ -326,7 +321,7 @@ export const ProductionSimulation: React.FC<ProductionSimulationProps> = ({ wind
 
             {/* Product Selection Modal Overlay */}
             {showProductModal && (
-                <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in">
+                <div className="absolute inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-8 animate-fade-in">
                     <div className="bg-white dark:bg-surface w-full max-w-3xl h-[500px] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-neutral-700">
                         <div className="p-4 border-b border-gray-200 dark:border-neutral-700 flex justify-between items-center bg-gray-50 dark:bg-neutral-900">
                             <input

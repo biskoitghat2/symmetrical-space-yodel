@@ -587,7 +587,7 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ windowId, produc
 
         {/* Product Selection Modal */}
         {showProductModal && (
-            <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-8">
+            <div className="absolute inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-8">
                 <div className="bg-white dark:bg-surface w-full max-w-3xl h-[500px] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-neutral-700">
                     <div className="p-4 border-b border-gray-200 dark:border-neutral-700 flex justify-between items-center bg-gray-50 dark:bg-neutral-900">
                         <input 

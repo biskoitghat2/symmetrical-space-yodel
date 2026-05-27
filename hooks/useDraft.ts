@@ -1,20 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 export function useDraft<T>(windowId: string, initialState: T) {
-  const [state, setState] = useState<T>(initialState);
   const draftKey = `draft-${windowId}`;
 
-  // Load draft on mount
-  useEffect(() => {
+  // Lazy initial state: read localStorage once at mount rather than in an effect,
+  // so draft values are available before the first render (no race with initialData).
+  const [state, setState] = useState<T>(() => {
     const savedDraft = localStorage.getItem(draftKey);
     if (savedDraft) {
       try {
-        setState(JSON.parse(savedDraft));
-      } catch (e) {
-        console.error("Failed to parse draft", e);
+        return JSON.parse(savedDraft) as T;
+      } catch {
+        // corrupted draft — fall back to initialState
       }
     }
-  }, [draftKey]);
+    return initialState;
+  });
 
   // Save draft on change
   const setDraftState = useCallback((newState: T | ((prev: T) => T)) => {

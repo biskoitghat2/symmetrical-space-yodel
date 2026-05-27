@@ -191,7 +191,7 @@ export const ProductCardex: React.FC<ProductCardexProps> = ({ productId }) => {
               </div>
               <div className="bg-gray-50 dark:bg-neutral-900 p-2 rounded border border-gray-100 dark:border-neutral-800">
                 <div className="text-gray-500 dark:text-neutral-500 mb-1">تاریخ و ساعت</div>
-                <span className="font-mono font-bold text-gray-900 dark:text-white">{m.date} {m.time}</span>
+                <span className="font-date font-bold text-gray-900 dark:text-white">{m.date} {m.time}</span>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { X, Download, ZoomIn, ZoomOut, ChevronRight, ChevronLeft, Maximize2 } from 'lucide-react';
 import { useImageUrls } from '../../hooks/useImageUrl';
 
@@ -7,9 +8,11 @@ interface ImageViewerProps {
   title?: string;
   onClose: () => void;
   initialIndex?: number;
+  /** Render via portal so position:fixed escapes CSS-transform ancestors (Windows). */
+  portal?: boolean;
 }
 
-export const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose, initialIndex = 0 }) => {
+export const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClose, initialIndex = 0, portal = false }) => {
   const rawImages = Array.isArray(imageUrl) ? imageUrl : [imageUrl];
   const displayUrls = useImageUrls(rawImages); // resolve all to Blob URLs
 
@@ -56,7 +59,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClo
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentIndex]);
 
-  return (
+  const content = (
     <div
       className={`fixed inset-0 z-[9999] bg-black flex flex-col ${isFullscreen ? '' : 'p-0'}`}
       onKeyDown={handleKeyDown}
@@ -194,4 +197,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({ imageUrl, title, onClo
       )}
     </div>
   );
+
+  if (portal) return ReactDOM.createPortal(content, document.body);
+  return content;
 };

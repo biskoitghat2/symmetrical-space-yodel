@@ -11,6 +11,9 @@ import {
   RepairStatus, RepairPriceTemplate, InventoryMovement, MovementType, Unit
 } from '../types';
 
+// Double-click guard for convertToInvoice — tracks receipt IDs currently being converted.
+const _convertingReceiptIds = new Set<string>();
+
 // Helper functions
 const getCurrentTime = () => new Date().toLocaleTimeString('fa-IR-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
 
@@ -141,6 +144,8 @@ interface DataState {
   getDatabasePath: () => Promise<string>;
   createBackup: (destinationPath: string) => Promise<void>;
   restoreBackup: (sourcePath: string) => Promise<void>;
+  exportBackupJSON: () => Promise<string>;
+  importBackupJSON: (jsonText: string) => Promise<void>;
   clearAllData: () => Promise<void>;
 }
 
@@ -503,6 +508,9 @@ export const useDataStore = create<DataState>()((set, get) => ({
       await DatabaseService.deleteProductHistory(history.id);
     }
 
+    // 4b. Explicitly delete inventory movements — WebDatabase doesn't enforce FK CASCADE
+    await DatabaseService.deleteInventoryMovementsByProduct(id);
+
     // 5. Delete the product
     await DatabaseService.deleteProduct(id);
 
@@ -766,12 +774,17 @@ export const useDataStore = create<DataState>()((set, get) => ({
   addCheck: async (check) => {
     // Guard: refuse if customer doesn't exist — prevents orphan customer_transactions.
     // Receivable/payable both rely on customerId being valid.
-    const customer = get().customers.find(c => c.id === check.customerId);
-    if (!customer) {
+    if (!get().customers.find(c => c.id === check.customerId)) {
       throw new Error('مشتری انتخاب‌شده پیدا نشد. ابتدا مشتری را ثبت کنید.');
     }
 
     await DatabaseService.withTransaction(async () => {
+      // Re-fetch customer inside the queue so concurrent ops on the same customer
+      // don't clobber each other's balance updates.
+      const freshCustomers = await DatabaseService.getAllCustomers();
+      const customer = freshCustomers.find(c => c.id === check.customerId);
+      if (!customer) throw new Error('مشتری انتخاب‌شده پیدا نشد.');
+
       await DatabaseService.addCheck(check);
       const log = createLog('CREATE', 'چک', `ثبت چک ${check.type === 'receivable' ? 'دریافتی' : 'پرداختی'} شماره ${check.number} مبلغ ${check.amount.toLocaleString()}`, check.id);
       await DatabaseService.addSystemLog(log);
@@ -1615,6 +1628,10 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
       // Validate stock (not for SERVICE — no inventory)
       if (invoice.type === 'SALE' || invoice.type === 'WASTE') {
+        // Re-fetch products from DB inside the queue so two concurrent SALE invoices
+        // for the same product can't both pass validation against a stale Zustand snapshot.
+        const freshProducts = await DatabaseService.getAllProducts();
+
         // Group items by productId and sum quantities
         const productQuantities = new Map<string, number>();
         for (const item of invoice.items) {
@@ -1626,7 +1643,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
         // Check if total quantity for each product exceeds available stock
         for (const [productId, totalQuantity] of productQuantities.entries()) {
-          const product = state.products.find(p => p.id === productId);
+          const product = freshProducts.find(p => p.id === productId);
           if (product && product.stock < totalQuantity) {
             throw new Error(`موجودی کافی نیست: ${product.name} (موجودی: ${product.stock}، درخواستی کل: ${totalQuantity})`);
           }
@@ -2729,7 +2746,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
     if (receipt.depositAmount > 0 && receipt.depositBankAccountId) {
       const account = get().bankAccounts.find(a => a.id === receipt.depositBankAccountId);
       if (account) {
-        const updatedAccount = { ...account, balance: new Decimal(account.balance).plus(receipt.depositAmount).toNumber() };
+        const updatedAccount = { ...account, balance: moneyAdd(account.balance, receipt.depositAmount) };
         await DatabaseService.updateBankAccount(updatedAccount);
 
         globalBankTrx = {
@@ -2743,7 +2760,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
           accountId: receipt.depositBankAccountId,
           customerId: receipt.customerId || undefined,
           refId: receipt.id,
-          refType: 'INVOICE'
+          refType: 'REPAIR_RECEIPT'
         };
         await DatabaseService.addTransaction(globalBankTrx);
       }
@@ -2761,13 +2778,13 @@ export const useDataStore = create<DataState>()((set, get) => ({
           type: 'PAYMENT_CASH',
           description: `پرداخت بیعانه رسید تعمیرات #${receipt.receiptNumber}`,
           amount: receipt.depositAmount,
-          isDebtor: false, // Customer paid us
+          isDebtor: false,
           refId: receipt.id,
           refType: 'REPAIR_RECEIPT'
         };
         await DatabaseService.addCustomerTransaction(globalDepositTrx);
 
-        const updatedCustomer = { ...customer, balance: new Decimal(customer.balance).minus(receipt.depositAmount).toNumber() };
+        const updatedCustomer = { ...customer, balance: moneySub(customer.balance, receipt.depositAmount) };
         await DatabaseService.updateCustomer(updatedCustomer);
       }
     }
@@ -2780,7 +2797,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
         newTransactions = [globalBankTrx, ...state.transactions];
         newBankAccounts = state.bankAccounts.map(a =>
           a.id === receipt.depositBankAccountId
-            ? { ...a, balance: new Decimal(a.balance).plus(receipt.depositAmount).toNumber() }
+            ? { ...a, balance: moneyAdd(a.balance, receipt.depositAmount) }
             : a
         );
       }
@@ -2792,7 +2809,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
         newCustomerTransactions = [globalDepositTrx, ...state.customerTransactions];
         newCustomers = state.customers.map(c =>
           c.id === receipt.customerId
-            ? { ...c, balance: new Decimal(c.balance).minus(receipt.depositAmount).toNumber() }
+            ? { ...c, balance: moneySub(c.balance, receipt.depositAmount) }
             : c
         );
       }
@@ -2853,7 +2870,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
         const mvmt = createMovement(
           product.id, part.quantity, 'RETURN_SALE',
           `بازگشت قطعه (حذف رسید تعمیرات #${receipt.receiptNumber})`,
-          'INVOICE', receipt.id,
+          'REPAIR_RECEIPT', receipt.id,
         );
         await DatabaseService.addInventoryMovement(mvmt);
         restoreMovements.push(mvmt);
@@ -2867,12 +2884,12 @@ export const useDataStore = create<DataState>()((set, get) => ({
         const account = get().bankAccounts.find(a => a.id === receipt.depositBankAccountId);
         if (account) {
           const bankTrx = get().transactions.find(t =>
-            (t.refId === receipt.id && t.refType === 'INVOICE') ||
+            (t.refId === receipt.id && t.refType === 'REPAIR_RECEIPT') ||
             (t.accountId === receipt.depositBankAccountId && t.description.includes(`رسید تعمیرات #${receipt.receiptNumber}`))
           );
 
           if (bankTrx) {
-            const updatedAccount = { ...account, balance: new Decimal(account.balance).minus(receipt.depositAmount).toNumber() };
+            const updatedAccount = { ...account, balance: moneySub(account.balance, receipt.depositAmount) };
             await DatabaseService.updateBankAccount(updatedAccount);
             await DatabaseService.deleteTransaction(bankTrx.id);
           }
@@ -2890,12 +2907,12 @@ export const useDataStore = create<DataState>()((set, get) => ({
           let balanceAdjustment = 0;
           for (const trx of custTrxs) {
             const reverseEffect = trx.isDebtor ? -trx.amount : trx.amount;
-            balanceAdjustment = new Decimal(balanceAdjustment).plus(reverseEffect).toNumber();
+            balanceAdjustment = moneyAdd(balanceAdjustment, reverseEffect);
             await DatabaseService.deleteCustomerTransaction(trx.id);
           }
 
           if (balanceAdjustment !== 0) {
-            const updatedCustomer = { ...customer, balance: new Decimal(customer.balance).plus(balanceAdjustment).toNumber() };
+            const updatedCustomer = { ...customer, balance: moneyAdd(customer.balance, balanceAdjustment) };
             await DatabaseService.updateCustomer(updatedCustomer);
           }
         }
@@ -2928,12 +2945,12 @@ export const useDataStore = create<DataState>()((set, get) => ({
       if (receipt.depositAmount > 0) {
         if (receipt.depositBankAccountId) {
           newTransactions = state.transactions.filter(t =>
-            !(t.refId === receipt.id && t.refType === 'INVOICE') &&
+            !(t.refId === receipt.id && t.refType === 'REPAIR_RECEIPT') &&
             !(t.accountId === receipt.depositBankAccountId && t.description.includes(`رسید تعمیرات #${receipt.receiptNumber}`))
           );
           newBankAccounts = state.bankAccounts.map(a =>
             a.id === receipt.depositBankAccountId
-              ? { ...a, balance: new Decimal(a.balance).minus(receipt.depositAmount).toNumber() }
+              ? { ...a, balance: moneySub(a.balance, receipt.depositAmount) }
               : a
           );
         }
@@ -2944,13 +2961,13 @@ export const useDataStore = create<DataState>()((set, get) => ({
 
           let balanceAdjustment = 0;
           custTrxs.forEach(trx => {
-            balanceAdjustment = new Decimal(balanceAdjustment).plus(trx.isDebtor ? -trx.amount : trx.amount).toNumber();
+            balanceAdjustment = moneyAdd(balanceAdjustment, trx.isDebtor ? -trx.amount : trx.amount);
           });
 
           if (balanceAdjustment !== 0) {
             newCustomers = state.customers.map(c =>
               c.id === receipt.customerId
-                ? { ...c, balance: new Decimal(c.balance).plus(balanceAdjustment).toNumber() }
+                ? { ...c, balance: moneyAdd(c.balance, balanceAdjustment) }
                 : c
             );
           }
@@ -3015,7 +3032,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
       movement = createMovement(
         product.id, -part.quantity, 'SALE',
         `قطعه مصرفی رسید تعمیرات #${receipt.receiptNumber}`,
-        'INVOICE', receipt.id,
+        'REPAIR_RECEIPT', receipt.id,
       );
       await DatabaseService.addInventoryMovement(movement);
     }
@@ -3035,7 +3052,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
     if (!removedPart) return;
 
     const updatedParts = receipt.usedParts.filter(p => p.id !== partId);
-    const totalPartsCost = updatedParts.reduce((sum, p) => new Decimal(sum).plus(p.total).toNumber(), 0);
+    const totalPartsCost = updatedParts.reduce((sum, p) => moneyAdd(sum, p.total), 0);
     const updatedReceipt = {
       ...receipt,
       usedParts: updatedParts,
@@ -3067,7 +3084,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
         reverseMovement = createMovement(
           product.id, removedPart.quantity, 'RETURN_SALE',
           `بازگشت قطعه از رسید تعمیرات #${receipt.receiptNumber}`,
-          'INVOICE', receipt.id,
+          'REPAIR_RECEIPT', receipt.id,
         );
         await DatabaseService.addInventoryMovement(reverseMovement);
       }
@@ -3083,6 +3100,9 @@ export const useDataStore = create<DataState>()((set, get) => ({
   },
 
   convertToInvoice: async (receiptId, bankAccountId, paidCashAmount, linkedCheckIds) => {
+    if (_convertingReceiptIds.has(receiptId)) return null;
+    _convertingReceiptIds.add(receiptId);
+    try {
     const receipt = get().repairReceipts.find(r => r.id === receiptId);
     if (!receipt || receipt.status !== 'REPAIRED' || receipt.invoiceId) return null;
 
@@ -3305,6 +3325,9 @@ export const useDataStore = create<DataState>()((set, get) => ({
     });
 
     return invoice.id;
+    } finally {
+      _convertingReceiptIds.delete(receiptId);
+    }
   },
 
   deliverWithoutInvoice: async (receiptId, bankAccountId) => {
@@ -3351,7 +3374,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
         refType: 'REPAIR_RECEIPT'
       };
       globalTrxsToAdd = [repairTrx];
-      globalUpdatedCustomerBalance = new Decimal(get().customers.find(c => c.id === receipt.customerId)?.balance || 0).plus(receipt.finalCost).toNumber();
+      globalUpdatedCustomerBalance = moneyAdd(get().customers.find(c => c.id === receipt.customerId)?.balance || 0, receipt.finalCost);
 
       if (receipt.finalPayment) {
         const paymentTrx: CustomerTransaction = {
@@ -3367,7 +3390,7 @@ export const useDataStore = create<DataState>()((set, get) => ({
           refType: 'REPAIR_RECEIPT'
         };
         globalTrxsToAdd.push(paymentTrx);
-        globalUpdatedCustomerBalance = new Decimal(globalUpdatedCustomerBalance).minus(receipt.finalPayment).toNumber();
+        globalUpdatedCustomerBalance = moneySub(globalUpdatedCustomerBalance, receipt.finalPayment);
       }
 
       // 🟢 FIX Bug NEW-4: Database saves for customer transactions
@@ -3389,14 +3412,13 @@ export const useDataStore = create<DataState>()((set, get) => ({
         accountId: bankAccountId,
         customerId: receipt.customerId || undefined,
         refId: receipt.id,
-        refType: 'INVOICE' // Cast to INVOICE to satisfy union type constraints for transactions
+        refType: 'REPAIR_RECEIPT'
       };
 
-      // 🟢 FIX Bug NEW-4 & NEW-11: DB save & refIds
       await DatabaseService.addTransaction(globalBankTrx);
       const accountToUpdate = get().bankAccounts.find(a => a.id === bankAccountId);
       if (accountToUpdate) {
-        globalUpdatedBankBalance = new Decimal(accountToUpdate.balance).plus(receipt.finalPayment).toNumber();
+        globalUpdatedBankBalance = moneyAdd(accountToUpdate.balance, receipt.finalPayment);
         await DatabaseService.updateBankAccount({
           ...accountToUpdate,
           balance: globalUpdatedBankBalance
@@ -3477,6 +3499,21 @@ export const useDataStore = create<DataState>()((set, get) => ({
       console.error('❌ Failed to restore backup:', error);
       throw error;
     }
+  },
+
+  exportBackupJSON: async () => {
+    const json = await DatabaseService.exportToJSON();
+    const log = createLog('BACKUP', 'پشتیبان‌گیری', 'خروجی JSON تهیه شد');
+    await DatabaseService.addSystemLog(log);
+    set((state) => ({ logs: [log, ...state.logs] }));
+    return json;
+  },
+
+  importBackupJSON: async (jsonText: string) => {
+    await DatabaseService.importFromJSON(jsonText);
+    const log = createLog('RESTORE', 'بازگردانی', 'بازگردانی از فایل JSON انجام شد');
+    await DatabaseService.addSystemLog(log);
+    await get().loadAllData();
   },
 
   clearAllData: async () => {

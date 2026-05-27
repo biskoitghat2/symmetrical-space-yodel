@@ -981,7 +981,7 @@ export const RepairReceiptForm: React.FC<RepairReceiptFormProps> = ({ windowId, 
 
               {/* Product Selection Modal */}
               {showProductModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowProductModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={() => setShowProductModal(false)}>
                   <div className="bg-white dark:bg-surface rounded-lg p-4 max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold">انتخاب قطعه از انبار</h3>
@@ -1274,7 +1274,7 @@ export const RepairReceiptForm: React.FC<RepairReceiptFormProps> = ({ windowId, 
                       <button
                         type="button"
                         onClick={() => {
-                          const r = (financialSummary?.remaining || 0) - (parseInt(paidCashAmount.replace(/,/g, ''), 10) || 0) - invoiceChecks.reduce((sum, id) => sum + (checks.find(c => c.id === id)?.amount || 0), 0);
+                          const r = moneySub(moneySub(financialSummary?.remaining || 0, parseInt(paidCashAmount.replace(/,/g, ''), 10) || 0), moneySum(invoiceChecks.map(id => checks.find(c => c.id === id)?.amount || 0)));
                           openWindow('ثبت چک جدید', 'CHECK_FORM', {
                             checkData: {
                               type: 'receivable',
@@ -1321,7 +1321,7 @@ export const RepairReceiptForm: React.FC<RepairReceiptFormProps> = ({ windowId, 
 
               {/* Templates Modal */}
               {showTemplatesModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTemplatesModal(false)}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={() => setShowTemplatesModal(false)}>
                   <div className="bg-white dark:bg-surface rounded-lg p-4 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold">الگوهای قیمت‌گذاری</h3>

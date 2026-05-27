@@ -2,8 +2,10 @@
 import React, { useEffect } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { AlertTriangle, HelpCircle, AlertCircle } from 'lucide-react';
+import { useFocusRestore } from '../../hooks/useFocusRestore';
 
-export const ConfirmModal: React.FC = () => {
+const ConfirmModalInner: React.FC = () => {
+  useFocusRestore();
   const { confirmModal, closeConfirm } = useUIStore();
   const { isOpen, options } = confirmModal;
 
@@ -80,4 +82,10 @@ export const ConfirmModal: React.FC = () => {
       </div>
     </div>
   );
+};
+
+export const ConfirmModal: React.FC = () => {
+  const { confirmModal } = useUIStore();
+  if (!confirmModal.isOpen || !confirmModal.options) return null;
+  return <ConfirmModalInner />;
 };

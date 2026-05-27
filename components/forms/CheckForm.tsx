@@ -395,25 +395,21 @@ export const CheckForm: React.FC<CheckFormProps> = ({ windowId, initialData, onC
                             {formState.images && formState.images.length > 0 && (
                                 <div className="mt-2 grid grid-cols-4 gap-2">
                                     {formState.images.map((img, idx) => (
-                                        <div key={idx} className="relative w-full h-16 border border-gray-200 dark:border-neutral-700 group rounded overflow-hidden">
+                                        <div key={idx} className="relative w-full h-16 border border-gray-200 dark:border-neutral-700 rounded overflow-hidden cursor-pointer" onClick={() => { setShowImageViewer(true); }}>
                                             <img src={img} alt={`Check ${idx + 1}`} className="w-full h-full object-contain bg-gray-100 dark:bg-black" />
                                             <div className="absolute top-1 right-1 flex gap-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setShowImageViewer(true)}
-                                                    className="p-0.5 bg-blue-600 text-white rounded shadow-md hover:bg-blue-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    title="نمایش بزرگ"
-                                                >
-                                                    <Maximize2 size={10} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormState(prev => ({ ...prev, images: prev.images?.filter((_, i) => i !== idx) || [] }))}
+                                                    onClick={(e) => { e.stopPropagation(); setFormState(prev => ({ ...prev, images: prev.images?.filter((_, i) => i !== idx) || [] })); }}
                                                     className="p-0.5 bg-red-500 text-white rounded shadow-md hover:bg-red-600"
                                                     title="حذف"
                                                 >
                                                     <X size={10} />
                                                 </button>
+                                            </div>
+                                            <div className="absolute bottom-0 inset-x-0 bg-black/40 text-white text-[9px] text-center py-0.5 flex items-center justify-center gap-0.5">
+                                                <Maximize2 size={8} />
+                                                بزرگ
                                             </div>
                                         </div>
                                     ))}
@@ -424,6 +420,7 @@ export const CheckForm: React.FC<CheckFormProps> = ({ windowId, initialData, onC
                                     imageUrl={formState.images}
                                     title={`چک شماره ${formState.number || 'جدید'}`}
                                     onClose={() => setShowImageViewer(false)}
+                                    portal
                                 />
                             )}
                         </div>

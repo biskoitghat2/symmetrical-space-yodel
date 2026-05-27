@@ -41,17 +41,6 @@ export class DatabaseService {
       // ── Web / non-Tauri mode ──────────────────────────────────────────────
       const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
       if (!isTauri) {
-        // ── Server mode (Express + better-sqlite3, window flag injected by server.js) ──
-        if (typeof window !== 'undefined' && (window as any).__HESABFLOW_SERVER === true) {
-          console.log('🖥️ Server mode — SQLite via local HTTP API');
-          const { ServerDatabase } = await import('./ServerDatabase');
-          this.db = new ServerDatabase() as any;
-          await this.initDatabase();
-          await this.runMigrations();
-          console.log('✅ ServerDatabase ready');
-          return;
-        }
-
         console.log('🌐 Tauri not detected — using in-memory IndexedDB storage (web mode)');
         const { WebDatabase } = await import('./WebDatabase');
         const webDb = new WebDatabase();

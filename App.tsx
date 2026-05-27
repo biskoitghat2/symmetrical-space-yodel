@@ -31,6 +31,10 @@ import { ErrorScreen } from './components/ErrorScreen';
 import { DatabaseService } from './services/DatabaseService';
 import { DataMigrationService } from './services/DataMigrationService';
 
+// Module-level guard so React StrictMode's double-invocation of effects doesn't
+// run two parallel initializations against the same DB.
+let _appInitializing = false;
+
 const App: React.FC = () => {
   const { currentPage } = useWindowStore();
   const loadAllData = useDataStore(state => state.loadAllData);
@@ -172,17 +176,22 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Prevent double initialization in dev mode (React StrictMode or HMR)
     let isSubscribed = true;
 
     const init = async () => {
-      // Check if first-run setup is complete
-      const isSetupComplete = localStorage.getItem('hesabflow_setup_complete');
-      if (!isSetupComplete) {
-        if (isSubscribed) setNeedsSetup(true);
-      } else {
-        // Start initialization immediately
-        if (isSubscribed) await initializeApp();
+      // Skip if another init cycle is already in-flight (React StrictMode runs effects twice in dev)
+      if (_appInitializing) return;
+      _appInitializing = true;
+
+      try {
+        const isSetupComplete = localStorage.getItem('hesabflow_setup_complete');
+        if (!isSetupComplete) {
+          if (isSubscribed) setNeedsSetup(true);
+        } else {
+          if (isSubscribed) await initializeApp();
+        }
+      } finally {
+        _appInitializing = false;
       }
     };
 

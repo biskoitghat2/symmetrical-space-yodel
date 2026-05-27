@@ -50,9 +50,12 @@ export const AdjustStockForm: React.FC<AdjustStockFormProps> = ({ windowId, prod
     }
 
     const desc = reason || (type === 'increase' ? 'افزایش موجودی دستی' : 'کاهش موجودی دستی');
-    updateProductStock(productId, projectedStock, desc);
-    showToast('success', `موجودی کالا ${type === 'increase' ? 'افزایش' : 'کاهش'} یافت`);
-    closeWindow(windowId);
+    updateProductStock(productId, projectedStock, desc)
+      .then(() => {
+        showToast('success', `موجودی کالا ${type === 'increase' ? 'افزایش' : 'کاهش'} یافت`);
+        closeWindow(windowId);
+      })
+      .catch(() => showToast('error', 'خطا در ثبت موجودی'));
   };
 
   const setQuickAmount = (n: number) => setAdjustment(String(n));

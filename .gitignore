@@ -26,7 +26,10 @@ dist-ssr
 # Claude Code local settings (per-machine permissions)
 .claude/settings.local.json
 
-# HesabFlow desktop — local config (paths specific to each machine)
-config.json
-server.bundle.cjs
-release/
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Signing keys (NEVER commit)
+*.key
+*.key.pub

@@ -487,6 +487,7 @@ export const TreasuryChecks: React.FC = () => {
                         setShowImageViewer(false);
                         setSelectedCheckImages(null);
                     }}
+                    portal
                 />
             )}
 

@@ -53,7 +53,7 @@ export function deriveBankBalance(
  * Formula: SUM(quantityChange)
  */
 export function deriveProductStock(movements: InventoryMovement[]): number {
-  return movements.reduce((acc, m) => acc + m.quantityChange, 0);
+  return moneySum(movements.map(m => m.quantityChange));
 }
 
 /**

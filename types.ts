@@ -16,7 +16,7 @@ export interface InventoryMovement {
   time: string;
   quantityChange: number;       // + = ورود به انبار,  − = خروج از انبار
   movementType: MovementType;
-  referenceType?: 'INVOICE' | 'PRODUCTION' | 'MANUAL';
+  referenceType?: 'INVOICE' | 'PRODUCTION' | 'MANUAL' | 'REPAIR_RECEIPT';
   referenceId?: string;          // invoice.id یا production.id
   description: string;
 }
@@ -33,7 +33,7 @@ export interface Transaction {
   accountId?: string;
   toAccountId?: string;
   refId?: string;
-  refType?: 'INVOICE' | 'CHECK' | 'BANK_TRANSACTION';
+  refType?: 'INVOICE' | 'CHECK' | 'BANK_TRANSACTION' | 'REPAIR_RECEIPT';
 }
 
 export interface BankAccount {
