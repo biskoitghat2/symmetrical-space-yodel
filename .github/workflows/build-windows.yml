@@ -36,8 +36,12 @@ jobs:
       # @yao-pkg/pkg still uses Babel which cannot parse `import.meta.url`.
       # esbuild rewrites import.meta.url → require('url').pathToFileURL(...)
       # and emits a single CJS file that pkg's bytecode compiler accepts.
-      # better-sqlite3 is marked external because we ship its .node file
-      # alongside the EXE and load it from disk at runtime.
+      #
+      # better-sqlite3's lib/*.js IS bundled INLINE (so pkg's static analyzer
+      # never has to find it as a require). Only `bindings` is external —
+      # it's the dynamic .node-locator that better-sqlite3 uses internally,
+      # and it's never executed because we pass `nativeBinding` to Database()
+      # at runtime.
       - name: Bundle server.js → server.bundle.cjs (esbuild)
         shell: pwsh
         run: |
@@ -46,7 +50,7 @@ jobs:
             --platform=node `
             --target=node20 `
             --format=cjs `
-            --external:better-sqlite3 `
+            --external:bindings `
             --outfile=server.bundle.cjs
           if (-not (Test-Path "server.bundle.cjs")) {
             Write-Error "esbuild did NOT produce server.bundle.cjs"
