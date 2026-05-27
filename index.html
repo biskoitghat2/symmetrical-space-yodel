@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <title>HESAB FLOW</title>
   <!-- Use local fonts instead of CDN to avoid tracking prevention -->
-  <link href="/fonts/vazirmatn.css" rel="stylesheet" type="text/css" />
+  <link href="./fonts/vazirmatn.css" rel="stylesheet" type="text/css" />
   <style>
     /* Initial Loading Screen - Shows immediately before React loads */
     #initial-loader {
@@ -156,13 +156,32 @@
         <div class="progress-fill"></div>
       </div>
       <div class="loading-text">در حال بارگذاری...</div>
+      <div id="boot-error" style="display:none;margin-top:24px;text-align:left;direction:ltr;font-family:monospace;font-size:11px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:12px;max-width:560px;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto"></div>
     </div>
   </div>
 
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
-  
+
   <script>
+    // Surface any uncaught errors instead of leaving a blank window.
+    (function () {
+      var errBox = null;
+      function show(msg) {
+        if (!errBox) errBox = document.getElementById('boot-error');
+        if (!errBox) return;
+        errBox.style.display = 'block';
+        errBox.textContent = (errBox.textContent ? errBox.textContent + '\n\n' : '') + msg;
+      }
+      window.addEventListener('error', function (e) {
+        show('[error] ' + (e.message || '') + '\n' + (e.filename || '') + ':' + (e.lineno || '') + '\n' + ((e.error && e.error.stack) || ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        show('[promise] ' + (r && (r.stack || r.message || String(r))));
+      });
+    })();
+
     // Hide initial loader when React is ready
     window.addEventListener('DOMContentLoaded', () => {
       // Wait a bit for React to mount

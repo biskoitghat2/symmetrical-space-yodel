@@ -184,12 +184,13 @@ const App: React.FC = () => {
       _appInitializing = true;
 
       try {
-        const isSetupComplete = localStorage.getItem('hesabflow_setup_complete');
-        if (!isSetupComplete) {
-          if (isSubscribed) setNeedsSetup(true);
-        } else {
-          if (isSubscribed) await initializeApp();
-        }
+        // Skip the welcome/setup wizard — use the default AppData path.
+        // The custom DB folder picker was causing a blank window when the
+        // user didn't pick a valid folder. Defaults are safe and writable
+        // on Windows out of the box; users can still change the path later
+        // from Settings → Backup/Restore.
+        localStorage.setItem('hesabflow_setup_complete', 'true');
+        if (isSubscribed) await initializeApp();
       } finally {
         _appInitializing = false;
       }
