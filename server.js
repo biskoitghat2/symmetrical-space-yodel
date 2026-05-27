@@ -44,11 +44,27 @@ const CONFIG_PATH = join(APP_DIR, 'config.json');
 const DIST        = join(__thisDir, 'dist');
 
 // ── Load better-sqlite3 ────────────────────────────────────────────────────
-// In a pkg bundle the native .node addon CANNOT live inside the snapshot —
-// Node refuses to dlopen() a file that does not exist on the real disk.
-// So we ship `better_sqlite3.node` next to `hesabflow.exe` and require it
-// from there via an absolute Windows path.
+// better-sqlite3 has two parts: a JS wrapper (lib/*.js) and a native addon
+// (better_sqlite3.node). The .node file's exports are an addon OBJECT
+// (with methods like setErrorConstructor) — NOT the Database constructor.
+// The Database constructor lives in the JS wrapper, which calls into the
+// native addon internally.
+//
+// In a pkg bundle:
+//   • The native .node CANNOT live inside the snapshot — Node refuses to
+//     dlopen() a file from a virtual FS. So we ship better_sqlite3.node
+//     next to hesabflow.exe and load it via a require anchored at that
+//     real disk path.
+//   • The JS wrapper IS bundled into the snapshot by pkg (because we left
+//     better-sqlite3 marked external in esbuild, so pkg sees the
+//     require('better-sqlite3') call and pulls in the package).
+//   • At runtime we pass the externally-loaded native addon to the JS
+//     wrapper via Database's `nativeBinding` option — this bypasses the
+//     wrapper's internal `require('bindings')('better_sqlite3.node')`
+//     lookup (which would fail in pkg).
 let Database;
+let nativeBinding = null;  // Only set in pkg mode
+
 if (IS_PKG) {
   const nodePath = join(APP_DIR, 'better_sqlite3.node');
   if (!existsSync(nodePath)) {
@@ -59,11 +75,14 @@ if (IS_PKG) {
     );
     process.exit(1);
   }
-  // createRequire anchored at the .node path → Node loads it as a native addon
-  Database = createRequire(nodePath)(nodePath);
+  // Load the native addon from real disk (createRequire anchored at the
+  // .node path → Node uses that path for dlopen)
+  nativeBinding = createRequire(nodePath)(nodePath);
+  // Load the JS wrapper from the snapshot (bundled by pkg)
+  Database = _require('better-sqlite3');
 } else {
   // Dynamic name so pkg's static analyzer does NOT pull better-sqlite3 into
-  // the snapshot. This branch only runs during dev (`node server.js`).
+  // the snapshot via this branch. Dev mode (`node server.js`) only.
   const bsName = ['better', 'sqlite3'].join('-');
   Database = _require(bsName);
 }
@@ -86,7 +105,9 @@ function persistConfig(cfg) {
 
 // ── Open / init database ───────────────────────────────────────────────────
 function openDb(dbFilePath) {
-  db = new Database(dbFilePath);
+  db = nativeBinding
+    ? new Database(dbFilePath, { nativeBinding })
+    : new Database(dbFilePath);
 
   // ── Feature 1: power-outage resilience ──────────────────────────────────
   // WAL  → writers don't block readers; journal survives a crash mid-write.
