@@ -2,10 +2,21 @@ import { GoogleGenAI } from "@google/genai";
 import { Transaction } from "../types";
 
 const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+
+// Lazily construct the client. `new GoogleGenAI({ apiKey: '' })` THROWS
+// ("API key must be set"), so constructing it at module load crashed the whole
+// app (white screen) on builds without a key. Build it on first use instead,
+// and only when a key is actually present.
+let ai: GoogleGenAI | null = null;
+const getClient = (): GoogleGenAI | null => {
+  if (!apiKey) return null;
+  if (!ai) ai = new GoogleGenAI({ apiKey });
+  return ai;
+};
 
 export const analyzeFinances = async (transactions: Transaction[], userQuery: string): Promise<string> => {
-  if (!apiKey) {
+  const client = getClient();
+  if (!client) {
     return "لطفاً کلید API را تنظیم کنید.";
   }
 
@@ -25,7 +36,7 @@ export const analyzeFinances = async (transactions: Transaction[], userQuery: st
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: userQuery,
       config: {
