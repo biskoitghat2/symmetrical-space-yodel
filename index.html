@@ -182,13 +182,20 @@
       });
     })();
 
-    // Hide initial loader when React is ready
-    window.addEventListener('DOMContentLoaded', () => {
-      // Wait a bit for React to mount
-      setTimeout(() => {
-        document.body.classList.add('react-loaded');
-      }, 100);
-    });
+    // The #initial-loader is hidden by React (App.tsx) once it has rendered, or
+    // by ErrorBoundary if a render error is caught. As a final safety net, if
+    // React has NOT mounted after 8s, surface a message instead of a blank page.
+    setTimeout(function () {
+      var root = document.getElementById('root');
+      if (root && root.childElementCount === 0) {
+        var box = document.getElementById('boot-error');
+        if (box) {
+          box.style.display = 'block';
+          box.textContent = (box.textContent ? box.textContent + '\n\n' : '') +
+            'برنامه بارگذاری نشد (React mount نشد). لطفاً برنامه را ببندید و دوباره باز کنید.';
+        }
+      }
+    }, 8000);
   </script>
 </body>
 

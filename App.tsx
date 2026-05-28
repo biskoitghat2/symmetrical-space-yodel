@@ -51,6 +51,13 @@ const App: React.FC = () => {
   // Initialize Notification System
   useNotificationSystem();
 
+  // Hide the static HTML #initial-loader as soon as React has actually rendered
+  // something (loading screen / setup / app). This replaces the old blind 100ms
+  // timeout in index.tsx so we never reveal a blank page when React fails to mount.
+  useEffect(() => {
+    document.body.classList.add('react-loaded');
+  }, []);
+
   // Zoom Control with Keyboard Shortcuts (Ctrl +, Ctrl -, Ctrl 0)
   useEffect(() => {
     const handleZoom = (e: KeyboardEvent) => {
@@ -184,13 +191,20 @@ const App: React.FC = () => {
       _appInitializing = true;
 
       try {
-        // Skip the welcome/setup wizard — use the default AppData path.
-        // The custom DB folder picker was causing a blank window when the
-        // user didn't pick a valid folder. Defaults are safe and writable
-        // on Windows out of the box; users can still change the path later
-        // from Settings → Backup/Restore.
-        localStorage.setItem('hesabflow_setup_complete', 'true');
-        if (isSubscribed) await initializeApp();
+        if (!isSubscribed) return;
+
+        // On the desktop (Tauri) we ask the user WHERE to store the database on
+        // first launch — the WelcomeSetup wizard lets them pick a custom folder
+        // (e.g. drive D/E so data survives a Windows reinstall) or use the
+        // default AppData path. In browser/web mode there is no folder concept,
+        // so we skip straight to initialization.
+        const firstRun = localStorage.getItem('hesabflow_setup_complete') !== 'true';
+        if (DatabaseService.isTauri && firstRun) {
+          setNeedsSetup(true);
+          return; // initializeApp() runs from handleSetupComplete()
+        }
+
+        await initializeApp();
       } finally {
         _appInitializing = false;
       }

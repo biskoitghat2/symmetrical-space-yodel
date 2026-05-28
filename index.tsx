@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useDataStore } from './store/dataStore';
 
 const rootElement = document.getElementById('root');
@@ -17,11 +18,13 @@ if (import.meta.env.DEV) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
 
-// Hide initial HTML loader after React mounts
-setTimeout(() => {
-  document.body.classList.add('react-loaded');
-}, 100);
+// NOTE: the initial HTML loader (#initial-loader) is hidden by App.tsx once it
+// has actually rendered (or by ErrorBoundary if a render error is caught). We
+// deliberately do NOT hide it on a blind timeout here — doing so would reveal a
+// blank white page if React failed to mount.

@@ -39,7 +39,7 @@ export class DatabaseService {
   private static async _doInitialize(): Promise<void> {
     try {
       // ── Web / non-Tauri mode ──────────────────────────────────────────────
-      const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+      const isTauri = DatabaseService.isTauri;
       if (!isTauri) {
         console.log('🌐 Tauri not detected — using in-memory IndexedDB storage (web mode)');
         const { WebDatabase } = await import('./WebDatabase');
@@ -1910,9 +1910,13 @@ export class DatabaseService {
   // overwriting it, so a corrupt restore file can be recovered manually.
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** True if running inside the Tauri desktop shell. */
-  private static get isTauri(): boolean {
-    return typeof window !== 'undefined' && '__TAURI__' in window;
+  /** True if running inside the Tauri desktop shell.
+   *  Tauri v2 only injects the `__TAURI__` global when `withGlobalTauri` is enabled,
+   *  but `__TAURI_INTERNALS__` is always present inside the WebView — check both so
+   *  detection never silently falls back to browser/IndexedDB mode on the desktop. */
+  static get isTauri(): boolean {
+    return typeof window !== 'undefined' &&
+      ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
   }
 
   /** Validates that a file at the given path is a real SQLite database

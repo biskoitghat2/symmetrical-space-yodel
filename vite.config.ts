@@ -35,11 +35,14 @@ export default defineConfig(({ mode }) => {
         minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
         sourcemap: !!process.env.TAURI_DEBUG,
         // Optimize chunk size for faster loading
-        chunkSizeWarningLimit: 1000,
+        chunkSizeWarningLimit: 1500,
         rollupOptions: {
           output: {
+            // NOTE: do NOT manually split react/react-dom into their own chunk.
+            // Under React 19 that produced an empty `react-vendor` chunk and a
+            // chunk init-order hazard that can blank the WebView. Let Rollup keep
+            // React in the entry chunk; only split the heavy, lazy-ish libs.
             manualChunks: {
-              'react-vendor': ['react', 'react-dom'],
               'icons': ['lucide-react'],
               'charts': ['recharts'],
             }

@@ -12,7 +12,8 @@ interface SettingsFormProps {
   windowId: string;
 }
 
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+const isTauri = typeof window !== 'undefined' &&
+  ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 
 export const SettingsForm: React.FC<SettingsFormProps> = ({ windowId }) => {
   const closeWindow = useWindowStore((state) => state.closeWindow);
