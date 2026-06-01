@@ -335,8 +335,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
         }
         // Guest restriction: cash-only for both anonymous guests (no customerId)
         // AND persistent guest customers (isGuest=true on the Customer record).
+        // Only applies to SALE-side invoices — you can legitimately buy on credit
+        // from an unregistered supplier, so PURCHASE/PRE_PURCHASE must NOT be blocked.
         const selectedCustomer = customers.find(c => c.id === formState.customerId);
-        const isGuestSale = !formState.customerId || selectedCustomer?.isGuest === true;
+        const isGuestSale = isSaleType && (!formState.customerId || selectedCustomer?.isGuest === true);
         if (isGuestSale) {
             if (totals.remained > 0) { showToast('error', 'نسیه برای مشتری مهمان مجاز نیست'); return null; }
             if (formState.invoiceChecks.length > 0) { showToast('error', 'چک برای مشتری مهمان مجاز نیست'); return null; }
@@ -785,8 +787,16 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                 {/* Payment + actions — single aligned row, every cell has a label */}
                 <div className="px-3 py-2 grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-3">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                             <Wallet size={10} /> مبلغ نقدی
+                            <button
+                                type="button"
+                                onClick={() => setFormState(s => ({ ...s, paidCashAmount: Math.max(0, moneySub(totals.afterDiscount, totals.totalChecks)) }))}
+                                title="پرداخت کامل نقدی — مانده صفر می‌شود"
+                                className="mr-auto px-1.5 py-px text-[9px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white rounded-sm transition-colors"
+                            >
+                                همه نقد
+                            </button>
                         </label>
                         <input
                             ref={cashInputRef}

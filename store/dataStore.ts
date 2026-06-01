@@ -3107,7 +3107,10 @@ export const useDataStore = create<DataState>()((set, get) => ({
     if (!receipt || receipt.status !== 'REPAIRED' || receipt.invoiceId) return null;
 
     const state = get();
-    const invoiceNumber = Math.max(0, ...state.invoices.map(i => i.number)) + 1;
+    // Number per-type (REPAIR has its own sequence), matching addInvoice. Using a
+    // global max here left gaps and mixed REPAIR numbers with other invoice types.
+    const repairInvoices = state.invoices.filter(i => i.type === 'REPAIR');
+    const invoiceNumber = (repairInvoices.length > 0 ? Math.max(...repairInvoices.map(i => i.number)) : 0) + 1;
     const today = new Date().toLocaleDateString('fa-IR-u-nu-latn');
     const now = getCurrentTime();
 

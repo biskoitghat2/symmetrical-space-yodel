@@ -67,7 +67,7 @@ export class WebDatabase {
       if (m && !this.store.has(m[1])) this.store.set(m[1], []);
       return;
     }
-    if (/^ALTER TABLE|^DROP TABLE|^PRAGMA|_write_test/i.test(s)) return;
+    if (/^ALTER TABLE|^DROP TABLE|^DROP INDEX|^PRAGMA|_write_test/i.test(s)) return;
 
     // ── INSERT ──
     if (/^INSERT(?:\s+OR\s+\w+)?\s+INTO/i.test(s)) {

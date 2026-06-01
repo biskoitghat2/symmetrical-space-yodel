@@ -93,21 +93,21 @@ export class DatabaseService {
       console.log('🔄 Testing write permission...');
       try {
         // Try to create and use a test table
-        await this.db.execute('CREATE TABLE IF NOT EXISTS _write_test (id INTEGER PRIMARY KEY)');
-        await this.db.execute('INSERT OR REPLACE INTO _write_test (id) VALUES (1)');
-        const result = await this.db.select<any[]>('SELECT * FROM _write_test WHERE id = 1');
+        await this.db!.execute('CREATE TABLE IF NOT EXISTS _write_test (id INTEGER PRIMARY KEY)');
+        await this.db!.execute('INSERT OR REPLACE INTO _write_test (id) VALUES (1)');
+        const result = await this.db!.select<any[]>('SELECT * FROM _write_test WHERE id = 1');
         if (result.length === 0) {
           throw new Error('Cannot read from test table');
         }
-        await this.db.execute('DELETE FROM _write_test WHERE id = 1');
-        await this.db.execute('DROP TABLE IF EXISTS _write_test');
+        await this.db!.execute('DELETE FROM _write_test WHERE id = 1');
+        await this.db!.execute('DROP TABLE IF EXISTS _write_test');
         console.log('✅ Database write permission verified');
       } catch (writeError) {
         console.error('❌ Database is read-only or write failed:', writeError);
         
         // Try to clean up test table if it exists
         try {
-          await this.db.execute('DROP TABLE IF EXISTS _write_test');
+          await this.db!.execute('DROP TABLE IF EXISTS _write_test');
         } catch (cleanupError) {
           // Ignore cleanup errors
         }
@@ -193,26 +193,26 @@ export class DatabaseService {
 
     try {
       // Enable WAL mode for better concurrency and performance
-      await this.db.execute('PRAGMA journal_mode = WAL');
+      await this.db!.execute('PRAGMA journal_mode = WAL');
 
       // Set synchronous to NORMAL for balance between speed and safety
       // NORMAL is safe for most applications and much faster than FULL
-      await this.db.execute('PRAGMA synchronous = NORMAL');
+      await this.db!.execute('PRAGMA synchronous = NORMAL');
 
       // Enable foreign keys
-      await this.db.execute('PRAGMA foreign_keys = ON');
+      await this.db!.execute('PRAGMA foreign_keys = ON');
 
       // Set cache size to 20MB for better performance (increased from 10MB)
-      await this.db.execute('PRAGMA cache_size = -20000');
+      await this.db!.execute('PRAGMA cache_size = -20000');
 
       // Set temp store to memory for faster operations
-      await this.db.execute('PRAGMA temp_store = MEMORY');
+      await this.db!.execute('PRAGMA temp_store = MEMORY');
 
       // Set optimal page size
-      await this.db.execute('PRAGMA page_size = 4096');
+      await this.db!.execute('PRAGMA page_size = 4096');
 
       // Enable memory-mapped I/O for faster reads
-      await this.db.execute('PRAGMA mmap_size = 30000000000');
+      await this.db!.execute('PRAGMA mmap_size = 30000000000');
 
       console.log('✅ PRAGMA settings applied: WAL mode, NORMAL sync, 20MB cache, mmap enabled');
     } catch (error) {
@@ -525,14 +525,17 @@ export class DatabaseService {
     ];
 
     for (const sql of tables) {
-      await this.db.execute(sql);
+      await this.db!.execute(sql);
     }
 
     // Run safe index creations (BEFORE migrations - only for columns that exist in base schema)
     const baseIndexes = [
       // DB-4: Unique Constraints
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_repair_receipt_number ON repair_receipts(receiptNumber)`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_invoice_number ON invoices(number)`,
+      // Invoice numbers are assigned PER TYPE (max+1 within a type), so uniqueness must be
+      // scoped to (number, type) — NOT number alone. A global-unique index here made every
+      // SALE collide with an existing PURCHASE/PRE_SALE of the same number and silently fail.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number_type ON invoices(number, type)`,
 
       // DB-2: Foreign Key Indexes
       `CREATE INDEX IF NOT EXISTS idx_cust_trx_customer ON customer_transactions(customerId)`,
@@ -570,7 +573,7 @@ export class DatabaseService {
     ];
 
     for (const sql of baseIndexes) {
-      await this.db.execute(sql);
+      await this.db!.execute(sql);
     }
 
     // Run migrations FIRST
@@ -584,7 +587,7 @@ export class DatabaseService {
 
     for (const sql of migratedIndexes) {
       try {
-        await this.db.execute(sql);
+        await this.db!.execute(sql);
       } catch (error) {
         console.warn('⚠️ Could not create index (column might not exist yet):', error);
       }
@@ -596,19 +599,19 @@ export class DatabaseService {
 
     try {
       // Migration 1: Convert checks.image to checks.images (TEXT to JSON array)
-      const checksTableInfo = await this.db.select<any[]>("PRAGMA table_info(checks)");
+      const checksTableInfo = await this.db!.select<any[]>("PRAGMA table_info(checks)");
       const hasCheckImageColumn = checksTableInfo.some(col => col.name === 'image');
       const hasCheckImagesColumn = checksTableInfo.some(col => col.name === 'images');
 
       if (hasCheckImageColumn && !hasCheckImagesColumn) {
         console.log('🔄 Running migration: checks.image -> checks.images');
 
-        await this.db.execute('ALTER TABLE checks ADD COLUMN images TEXT');
+        await this.db!.execute('ALTER TABLE checks ADD COLUMN images TEXT');
 
-        const checks = await this.db.select<any[]>('SELECT id, image FROM checks WHERE image IS NOT NULL');
+        const checks = await this.db!.select<any[]>('SELECT id, image FROM checks WHERE image IS NOT NULL');
         for (const check of checks) {
           const imagesArray = [check.image];
-          await this.db.execute(
+          await this.db!.execute(
             'UPDATE checks SET images = $1 WHERE id = $2',
             [JSON.stringify(imagesArray), check.id]
           );
@@ -618,12 +621,12 @@ export class DatabaseService {
       }
 
       // Migration 2: Add images column to products table
-      const productsTableInfo = await this.db.select<any[]>("PRAGMA table_info(products)");
+      const productsTableInfo = await this.db!.select<any[]>("PRAGMA table_info(products)");
       const hasProductImagesColumn = productsTableInfo.some(col => col.name === 'images');
 
       if (!hasProductImagesColumn) {
         console.log('🔄 Running migration: Adding products.images column');
-        await this.db.execute('ALTER TABLE products ADD COLUMN images TEXT');
+        await this.db!.execute('ALTER TABLE products ADD COLUMN images TEXT');
         console.log('✅ Migration completed: products.images column added');
       }
 
@@ -632,63 +635,63 @@ export class DatabaseService {
 
       if (!hasRefInvoiceIdColumn) {
         console.log('🔄 Running migration: Adding checks.refInvoiceId column');
-        await this.db.execute('ALTER TABLE checks ADD COLUMN refInvoiceId TEXT');
+        await this.db!.execute('ALTER TABLE checks ADD COLUMN refInvoiceId TEXT');
         console.log('✅ Migration completed: checks.refInvoiceId column added');
       }
 
       // Migration 4: Add linkedCheckIds column to invoices table
-      const invoicesTableInfo = await this.db.select<any[]>("PRAGMA table_info(invoices)");
+      const invoicesTableInfo = await this.db!.select<any[]>("PRAGMA table_info(invoices)");
       const hasLinkedCheckIdsColumn = invoicesTableInfo.some(col => col.name === 'linkedCheckIds');
 
       if (!hasLinkedCheckIdsColumn) {
         console.log('🔄 Running migration: Adding invoices.linkedCheckIds column');
-        await this.db.execute('ALTER TABLE invoices ADD COLUMN linkedCheckIds TEXT');
+        await this.db!.execute('ALTER TABLE invoices ADD COLUMN linkedCheckIds TEXT');
         console.log('✅ Migration completed: invoices.linkedCheckIds column added');
       }
 
       // Migration 5: Add refId and refType columns to transactions table
-      const transactionsTableInfo = await this.db.select<any[]>("PRAGMA table_info(transactions)");
+      const transactionsTableInfo = await this.db!.select<any[]>("PRAGMA table_info(transactions)");
       const hasRefIdColumn = transactionsTableInfo.some(col => col.name === 'refId');
 
       if (!hasRefIdColumn) {
         console.log('🔄 Running migration: Adding transactions.refId and refType columns');
-        await this.db.execute('ALTER TABLE transactions ADD COLUMN refId TEXT');
-        await this.db.execute('ALTER TABLE transactions ADD COLUMN refType TEXT');
+        await this.db!.execute('ALTER TABLE transactions ADD COLUMN refId TEXT');
+        await this.db!.execute('ALTER TABLE transactions ADD COLUMN refType TEXT');
         console.log('✅ Migration completed: transactions.refId and refType columns added');
       }
 
       // Migration 6: Add unit column to products table
-      const productsTableInfoM6 = await this.db.select<any[]>("PRAGMA table_info(products)");
+      const productsTableInfoM6 = await this.db!.select<any[]>("PRAGMA table_info(products)");
       const hasUnitColumn = productsTableInfoM6.some(col => col.name === 'unit');
 
       if (!hasUnitColumn) {
         console.log('🔄 Running migration: Adding products.unit column');
-        await this.db.execute("ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'عدد'");
+        await this.db!.execute("ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'عدد'");
         console.log('✅ Migration completed: products.unit column added');
       }
 
       // Migration 7: Add refId and refType columns to customer_transactions table
-      const customerTransactionsTableInfo = await this.db.select<any[]>("PRAGMA table_info(customer_transactions)");
+      const customerTransactionsTableInfo = await this.db!.select<any[]>("PRAGMA table_info(customer_transactions)");
       const hasCustomerTrxRefIdColumn = customerTransactionsTableInfo.some(col => col.name === 'refId');
 
       if (!hasCustomerTrxRefIdColumn) {
         console.log('🔄 Running migration: Adding customer_transactions.refId and refType columns');
-        await this.db.execute('ALTER TABLE customer_transactions ADD COLUMN refId TEXT');
-        await this.db.execute('ALTER TABLE customer_transactions ADD COLUMN refType TEXT');
+        await this.db!.execute('ALTER TABLE customer_transactions ADD COLUMN refId TEXT');
+        await this.db!.execute('ALTER TABLE customer_transactions ADD COLUMN refType TEXT');
         console.log('✅ Migration completed: customer_transactions.refId and refType columns added');
       }
 
       // Migration 8: Add openingBalance column to bank_accounts table
-      const bankAccountsTableInfo = await this.db.select<any[]>("PRAGMA table_info(bank_accounts)");
+      const bankAccountsTableInfo = await this.db!.select<any[]>("PRAGMA table_info(bank_accounts)");
       const hasOpeningBalanceColumn = bankAccountsTableInfo.some(col => col.name === 'openingBalance');
 
       if (!hasOpeningBalanceColumn) {
         console.log('🔄 Running migration: Adding bank_accounts.openingBalance column');
-        await this.db.execute('ALTER TABLE bank_accounts ADD COLUMN openingBalance REAL NOT NULL DEFAULT 0');
+        await this.db!.execute('ALTER TABLE bank_accounts ADD COLUMN openingBalance REAL NOT NULL DEFAULT 0');
 
         // Bootstrap existing accounts: openingBalance = current_balance - net of all transactions
         // This preserves correctness for existing data assuming current balance is accurate.
-        await this.db.execute(`
+        await this.db!.execute(`
           UPDATE bank_accounts
           SET openingBalance = balance - COALESCE((
             SELECT SUM(
@@ -709,15 +712,15 @@ export class DatabaseService {
 
       // Migration 9: Seed inventory_movements with OPENING_STOCK for existing products
       // Only runs once: if the table is empty but products exist, we create a snapshot.
-      const movementsCount = await this.db.select<[{ cnt: number }]>(
+      const movementsCount = await this.db!.select<[{ cnt: number }]>(
         'SELECT COUNT(*) AS cnt FROM inventory_movements'
       );
-      const productsCount = await this.db.select<[{ cnt: number }]>(
+      const productsCount = await this.db!.select<[{ cnt: number }]>(
         'SELECT COUNT(*) AS cnt FROM products'
       );
       if (movementsCount[0].cnt === 0 && productsCount[0].cnt > 0) {
         console.log('🔄 Running migration: Seeding inventory_movements with OPENING_STOCK snapshots');
-        const products = await this.db.select<{ id: string; stock: number; name: string }[]>(
+        const products = await this.db!.select<{ id: string; stock: number; name: string }[]>(
           'SELECT id, stock, name FROM products'
         );
         const now = new Date();
@@ -725,7 +728,7 @@ export class DatabaseService {
         const time = now.toLocaleTimeString('fa-IR-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
         for (const p of products) {
           if (p.stock !== 0) {
-            await this.db.execute(
+            await this.db!.execute(
               `INSERT INTO inventory_movements (id, productId, date, time, quantityChange, movementType, referenceType, referenceId, description)
                VALUES ($1, $2, $3, $4, $5, 'OPENING_STOCK', 'MANUAL', NULL, $6)`,
               [crypto.randomUUID(), p.id, date, time, p.stock, `موجودی اولیه هنگام راه‌اندازی دفتر کل انبار: ${p.name}`]
@@ -736,7 +739,7 @@ export class DatabaseService {
       }
 
       // Migration 10: Seed default units (idempotent: only if table is empty)
-      const unitsCount = await this.db.select<[{ cnt: number }]>(
+      const unitsCount = await this.db!.select<[{ cnt: number }]>(
         'SELECT COUNT(*) AS cnt FROM units'
       );
       if (unitsCount[0].cnt === 0) {
@@ -757,7 +760,7 @@ export class DatabaseService {
           { name: 'تن', isDecimal: true },
         ];
         for (const u of defaults) {
-          await this.db.execute(
+          await this.db!.execute(
             'INSERT INTO units (id, name, isDecimal, isBuiltIn) VALUES ($1, $2, $3, $4)',
             [crypto.randomUUID(), u.name, u.isDecimal ? 1 : 0, 1]
           );
@@ -766,25 +769,25 @@ export class DatabaseService {
       }
 
       // Migration 11: Add notes + creditLimit columns to customers
-      const customersTableInfo = await this.db.select<any[]>("PRAGMA table_info(customers)");
+      const customersTableInfo = await this.db!.select<any[]>("PRAGMA table_info(customers)");
       const hasNotesColumn = customersTableInfo.some(col => col.name === 'notes');
       const hasCreditLimitColumn = customersTableInfo.some(col => col.name === 'creditLimit');
 
       if (!hasNotesColumn) {
         console.log('🔄 Running migration: Adding customers.notes column');
-        await this.db.execute('ALTER TABLE customers ADD COLUMN notes TEXT');
+        await this.db!.execute('ALTER TABLE customers ADD COLUMN notes TEXT');
         console.log('✅ Migration completed: customers.notes added');
       }
       if (!hasCreditLimitColumn) {
         console.log('🔄 Running migration: Adding customers.creditLimit column');
-        await this.db.execute('ALTER TABLE customers ADD COLUMN creditLimit REAL');
+        await this.db!.execute('ALTER TABLE customers ADD COLUMN creditLimit REAL');
         console.log('✅ Migration completed: customers.creditLimit added');
       }
 
       // Migration 12: Unique composite index on invoices(number, type)
       // Prevents two invoices of the same type sharing a number.
       try {
-        await this.db.execute(
+        await this.db!.execute(
           'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number_type ON invoices(number, type)'
         );
         console.log('✅ Migration 12: idx_invoices_number_type ensured');
@@ -794,12 +797,29 @@ export class DatabaseService {
       }
 
       // Migration 13: Add isGuest column to customers (walk-in / one-time customers)
-      const custInfo13 = await this.db.select<any[]>("PRAGMA table_info(customers)");
+      const custInfo13 = await this.db!.select<any[]>("PRAGMA table_info(customers)");
       const hasIsGuest = custInfo13.some(c => c.name === 'isGuest');
       if (!hasIsGuest) {
         console.log('🔄 Running migration: Adding customers.isGuest column');
-        await this.db.execute('ALTER TABLE customers ADD COLUMN isGuest INTEGER NOT NULL DEFAULT 0');
+        await this.db!.execute('ALTER TABLE customers ADD COLUMN isGuest INTEGER NOT NULL DEFAULT 0');
         console.log('✅ Migration 13: customers.isGuest added');
+      }
+
+      // Migration 14: Drop the legacy GLOBAL-unique invoice-number index.
+      // It enforced uniqueness on invoices(number) alone, but numbering is per-type
+      // (see addInvoice). That made the first SALE collide with an existing PURCHASE/
+      // PRE_SALE of the same number → UNIQUE violation → "شماره فاکتور تکراری است" →
+      // the sale was never saved. The correct composite index idx_invoices_number_type
+      // (number, type) is created above; here we remove the stale global one.
+      try {
+        await this.db!.execute('DROP INDEX IF EXISTS idx_unique_invoice_number');
+        // Ensure the correct composite index exists even on DBs that never ran Migration 12.
+        await this.db!.execute(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_number_type ON invoices(number, type)'
+        );
+        console.log('✅ Migration 14: dropped global idx_unique_invoice_number, composite index ensured');
+      } catch (e) {
+        console.warn('⚠️ Migration 14 skipped:', e);
       }
     } catch (error) {
       console.error('⚠️ Migration failed (non-critical):', error);
@@ -820,7 +840,7 @@ export class DatabaseService {
 
   static async addProduct(product: Product): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO products (id, name, category, unit, stock, minStockAlert, buyPrice, lastBuyDate, 
        sellPrice, lastSellDate, lastPriceUpdateDate, sku, pricingStrategy, images) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
@@ -836,7 +856,7 @@ export class DatabaseService {
 
   static async updateProduct(product: Product): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE products SET name=$1, category=$2, unit=$3, stock=$4, minStockAlert=$5, buyPrice=$6, 
        lastBuyDate=$7, sellPrice=$8, lastSellDate=$9, lastPriceUpdateDate=$10, sku=$11, pricingStrategy=$12, images=$13 
        WHERE id=$14`,
@@ -853,18 +873,18 @@ export class DatabaseService {
 
   static async deleteProduct(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM products WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM products WHERE id=$1', [id]);
   }
 
   // ==================== CATEGORIES ====================
   static async getAllCategories(): Promise<Category[]> {
     await this.ensureInitialized();
-    return await this.db.select<Category[]>('SELECT * FROM categories');
+    return await this.db!.select<Category[]>('SELECT * FROM categories');
   }
 
   static async addCategory(category: Category): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       'INSERT INTO categories (id, name, description) VALUES ($1, $2, $3)',
       [category.id, category.name, category.description || null]
     );
@@ -872,7 +892,7 @@ export class DatabaseService {
 
   static async updateCategory(category: Category): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       'UPDATE categories SET name=$1, description=$2 WHERE id=$3',
       [category.name, category.description || null, category.id]
     );
@@ -880,13 +900,13 @@ export class DatabaseService {
 
   static async deleteCategory(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM categories WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM categories WHERE id=$1', [id]);
   }
 
   // ==================== UNITS ====================
   static async getAllUnits(): Promise<Unit[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM units');
+    const rows = await this.db!.select<any[]>('SELECT * FROM units');
     return rows.map(r => ({
       id: r.id,
       name: r.name,
@@ -897,7 +917,7 @@ export class DatabaseService {
 
   static async addUnit(unit: Unit): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO units (id, name, isDecimal, isBuiltIn) VALUES ($1, $2, $3, $4)`,
       [unit.id, unit.name, unit.isDecimal ? 1 : 0, unit.isBuiltIn ? 1 : 0]
     );
@@ -905,7 +925,7 @@ export class DatabaseService {
 
   static async updateUnit(unit: Unit): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE units SET name=$1, isDecimal=$2 WHERE id=$3`,
       [unit.name, unit.isDecimal ? 1 : 0, unit.id]
     );
@@ -913,13 +933,13 @@ export class DatabaseService {
 
   static async deleteUnit(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM units WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM units WHERE id=$1', [id]);
   }
 
   // ==================== CUSTOMERS ====================
   static async getAllCustomers(): Promise<Customer[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM customers');
+    const rows = await this.db!.select<any[]>('SELECT * FROM customers');
     // SQLite stores booleans as 0/1 — coerce isGuest back. Old rows pre-migration 13 have null.
     return rows.map(row => ({
       ...row,
@@ -931,7 +951,7 @@ export class DatabaseService {
     await this.ensureInitialized();
     console.log('💾 DatabaseService.addCustomer called with:', customer);
     try {
-      await this.db.execute(
+      await this.db!.execute(
         'INSERT INTO customers (id, name, phone, address, balance, createdAt, notes, creditLimit, isGuest) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
         [
           customer.id, customer.name, customer.phone, customer.address || null,
@@ -950,7 +970,7 @@ export class DatabaseService {
 
   static async updateCustomer(customer: Customer): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       'UPDATE customers SET name=$1, phone=$2, address=$3, balance=$4, notes=$5, creditLimit=$6, isGuest=$7 WHERE id=$8',
       [
         customer.name, customer.phone, customer.address || null, customer.balance,
@@ -964,13 +984,13 @@ export class DatabaseService {
 
   static async deleteCustomer(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM customers WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM customers WHERE id=$1', [id]);
   }
 
   // ==================== CUSTOMER TRANSACTIONS ====================
   static async getAllCustomerTransactions(): Promise<CustomerTransaction[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM customer_transactions');
+    const rows = await this.db!.select<any[]>('SELECT * FROM customer_transactions');
     return rows.map(row => ({
       ...row,
       isDebtor: Boolean(row.isDebtor)
@@ -981,7 +1001,7 @@ export class DatabaseService {
     await this.ensureInitialized();
     console.log('💾 DatabaseService.addCustomerTransaction called with:', trx);
     try {
-      await this.db.execute(
+      await this.db!.execute(
         `INSERT INTO customer_transactions (id, customerId, date, time, type, description, amount, isDebtor, refId, refType) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
@@ -1000,7 +1020,7 @@ export class DatabaseService {
     await this.ensureInitialized();
     console.log('💾 DatabaseService.updateCustomerTransaction called with:', trx);
     try {
-      await this.db.execute(
+      await this.db!.execute(
         `UPDATE customer_transactions 
          SET customerId=$2, date=$3, time=$4, type=$5, description=$6, amount=$7, isDebtor=$8, refId=$9, refType=$10
          WHERE id=$1`,
@@ -1018,23 +1038,23 @@ export class DatabaseService {
 
   static async deleteCustomerTransaction(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM customer_transactions WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM customer_transactions WHERE id=$1', [id]);
   }
 
   static async deleteCustomerTransactionsByCustomerId(customerId: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM customer_transactions WHERE customerId=$1', [customerId]);
+    await this.db!.execute('DELETE FROM customer_transactions WHERE customerId=$1', [customerId]);
   }
 
   // ==================== BANK ACCOUNTS ====================
   static async getAllBankAccounts(): Promise<BankAccount[]> {
     await this.ensureInitialized();
-    return await this.db.select<BankAccount[]>('SELECT * FROM bank_accounts');
+    return await this.db!.select<BankAccount[]>('SELECT * FROM bank_accounts');
   }
 
   static async addBankAccount(account: BankAccount): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO bank_accounts (id, title, accountType, bankName, accountNumber, shaba, balance, openingBalance, color, cardHolder)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
@@ -1057,7 +1077,7 @@ export class DatabaseService {
       );
       openingBalance = rows[0]?.openingBalance ?? 0;
     }
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE bank_accounts SET title=$1, accountType=$2, bankName=$3, accountNumber=$4,
        shaba=$5, balance=$6, openingBalance=$7, color=$8, cardHolder=$9 WHERE id=$10`,
       [
@@ -1070,18 +1090,18 @@ export class DatabaseService {
 
   static async deleteBankAccount(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM bank_accounts WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM bank_accounts WHERE id=$1', [id]);
   }
 
   // ==================== TRANSACTIONS ====================
   static async getAllTransactions(): Promise<Transaction[]> {
     await this.ensureInitialized();
-    return await this.db.select<Transaction[]>('SELECT * FROM transactions');
+    return await this.db!.select<Transaction[]>('SELECT * FROM transactions');
   }
 
   static async addTransaction(trx: Transaction): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO transactions (id, date, time, description, amount, type, category, customerId, accountId, toAccountId, refId, refType)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
@@ -1094,7 +1114,7 @@ export class DatabaseService {
 
   static async updateTransaction(trx: Transaction): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE transactions SET date=$1, time=$2, description=$3, amount=$4, type=$5, category=$6,
        customerId=$7, accountId=$8, toAccountId=$9, refId=$10, refType=$11 WHERE id=$12`,
       [
@@ -1107,7 +1127,7 @@ export class DatabaseService {
 
   static async deleteTransaction(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM transactions WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM transactions WHERE id=$1', [id]);
   }
 
   // ==================== RECONCILIATION ====================
@@ -1177,7 +1197,7 @@ export class DatabaseService {
   }
   static async getAllChecks(): Promise<Check[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM checks');
+    const rows = await this.db!.select<any[]>('SELECT * FROM checks');
     return rows.map(row => {
       let images: string[] | undefined;
 
@@ -1205,7 +1225,7 @@ export class DatabaseService {
 
   static async addCheck(check: Check): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO checks (id, type, status, amount, number, bank, accountId, depositAccountId, 
        customerId, issueDate, dueDate, description, images, refInvoiceId, createdAt) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
@@ -1222,7 +1242,7 @@ export class DatabaseService {
 
   static async updateCheck(check: Check): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE checks SET type=$1, status=$2, amount=$3, number=$4, bank=$5, accountId=$6, 
        depositAccountId=$7, customerId=$8, issueDate=$9, dueDate=$10, description=$11, images=$12, refInvoiceId=$13 
        WHERE id=$14`,
@@ -1239,13 +1259,13 @@ export class DatabaseService {
 
   static async deleteCheck(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM checks WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM checks WHERE id=$1', [id]);
   }
 
   // ==================== INVOICES ====================
   static async getAllInvoices(): Promise<Invoice[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM invoices');
+    const rows = await this.db!.select<any[]>('SELECT * FROM invoices');
     return rows.map(row => ({
       ...row,
       items: JSON.parse(row.items),
@@ -1255,7 +1275,7 @@ export class DatabaseService {
 
   static async addInvoice(invoice: Invoice): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO invoices (id, number, type, customerId, customerName, date, time, dueDate, items, 
        totalAmount, totalDiscount, totalTax, totalProfit, paymentMethod, paidCashAmount, paidCheckAmount, 
        remainedAmount, bankAccountId, checkId, repairReceiptId, linkedCheckIds, description, createdAt, status) 
@@ -1274,7 +1294,7 @@ export class DatabaseService {
 
   static async updateInvoice(invoice: Invoice): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE invoices SET number=$1, type=$2, customerId=$3, customerName=$4, date=$5, time=$6, 
        dueDate=$7, items=$8, totalAmount=$9, totalDiscount=$10, totalTax=$11, totalProfit=$12, 
        paymentMethod=$13, paidCashAmount=$14, paidCheckAmount=$15, remainedAmount=$16, 
@@ -1294,13 +1314,13 @@ export class DatabaseService {
 
   static async deleteInvoice(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM invoices WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM invoices WHERE id=$1', [id]);
   }
 
   // ==================== TASKS ====================
   static async getAllTasks(): Promise<Task[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM tasks');
+    const rows = await this.db!.select<any[]>('SELECT * FROM tasks');
     return rows.map(row => ({
       ...row,
       tags: row.tags ? JSON.parse(row.tags) : undefined
@@ -1309,7 +1329,7 @@ export class DatabaseService {
 
   static async addTask(task: Task): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO tasks (id, title, description, status, priority, dueDate, tags, assignee) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
@@ -1321,7 +1341,7 @@ export class DatabaseService {
 
   static async updateTask(task: Task): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE tasks SET title=$1, description=$2, status=$3, priority=$4, dueDate=$5, tags=$6, assignee=$7 
        WHERE id=$8`,
       [
@@ -1333,13 +1353,13 @@ export class DatabaseService {
 
   static async deleteTask(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM tasks WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM tasks WHERE id=$1', [id]);
   }
 
   // ==================== PRODUCTIONS ====================
   static async getAllProductions(): Promise<Production[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM productions');
+    const rows = await this.db!.select<any[]>('SELECT * FROM productions');
     return rows.map(row => ({
       ...row,
       rawMaterials: JSON.parse(row.rawMaterials),
@@ -1351,7 +1371,7 @@ export class DatabaseService {
 
   static async addProduction(production: Production): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO productions (id, date, time, productName, targetProductId, quantity, sku, 
        rawMaterials, costs, status, startDate, endDate, completionDuration, notes, photos, 
        totalRawMaterialCost, totalExternalCost, totalInternalCost, finalCostPrice, suggestedSellPrice) 
@@ -1372,7 +1392,7 @@ export class DatabaseService {
 
   static async updateProduction(production: Production): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE productions SET date=$1, time=$2, productName=$3, targetProductId=$4, quantity=$5, sku=$6, 
        rawMaterials=$7, costs=$8, status=$9, startDate=$10, endDate=$11, completionDuration=$12, 
        notes=$13, photos=$14, totalRawMaterialCost=$15, totalExternalCost=$16, totalInternalCost=$17, 
@@ -1392,18 +1412,18 @@ export class DatabaseService {
 
   static async deleteProduction(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM productions WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM productions WHERE id=$1', [id]);
   }
 
   // ==================== PRODUCT HISTORY ====================
   static async getAllProductHistory(): Promise<ProductHistory[]> {
     await this.ensureInitialized();
-    return await this.db.select<ProductHistory[]>('SELECT * FROM product_history');
+    return await this.db!.select<ProductHistory[]>('SELECT * FROM product_history');
   }
 
   static async addProductHistory(history: ProductHistory): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO product_history (id, productId, date, time, actionType, description, oldValue, newValue) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
@@ -1415,7 +1435,7 @@ export class DatabaseService {
 
   static async deleteProductHistory(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM product_history WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM product_history WHERE id=$1', [id]);
   }
 
   // ==================== INVENTORY MOVEMENTS ====================
@@ -1489,7 +1509,7 @@ export class DatabaseService {
   // ==================== SYSTEM LOGS ====================
   static async getAllSystemLogs(): Promise<SystemLog[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM system_logs');
+    const rows = await this.db!.select<any[]>('SELECT * FROM system_logs');
     return rows.map(row => ({
       ...row,
       details: row.details ? JSON.parse(row.details) : undefined
@@ -1498,7 +1518,7 @@ export class DatabaseService {
 
   static async addSystemLog(log: SystemLog): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO system_logs (id, date, time, user, actionType, entity, entityId, description, details) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
@@ -1510,18 +1530,18 @@ export class DatabaseService {
 
   static async deleteSystemLog(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM system_logs WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM system_logs WHERE id=$1', [id]);
   }
 
   static async clearSystemLogs(): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM system_logs');
+    await this.db!.execute('DELETE FROM system_logs');
   }
 
   // ==================== CALENDAR EVENTS ====================
   static async getAllCalendarEvents(): Promise<CalendarEvent[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM calendar_events');
+    const rows = await this.db!.select<any[]>('SELECT * FROM calendar_events');
     return rows.map(row => ({
       ...row,
       isCompleted: Boolean(row.isCompleted)
@@ -1530,7 +1550,7 @@ export class DatabaseService {
 
   static async addCalendarEvent(event: CalendarEvent): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO calendar_events (id, date, title, isCompleted, type, priority) 
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [event.id, event.date, event.title, event.isCompleted ? 1 : 0, event.type, event.priority || null]
@@ -1539,7 +1559,7 @@ export class DatabaseService {
 
   static async updateCalendarEvent(event: CalendarEvent): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE calendar_events SET date=$1, title=$2, isCompleted=$3, type=$4, priority=$5 WHERE id=$6`,
       [event.date, event.title, event.isCompleted ? 1 : 0, event.type, event.priority || null, event.id]
     );
@@ -1547,13 +1567,13 @@ export class DatabaseService {
 
   static async deleteCalendarEvent(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM calendar_events WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM calendar_events WHERE id=$1', [id]);
   }
 
   // ==================== REPAIR RECEIPTS ====================
   static async getAllRepairReceipts(): Promise<RepairReceipt[]> {
     await this.ensureInitialized();
-    const rows = await this.db.select<any[]>('SELECT * FROM repair_receipts');
+    const rows = await this.db!.select<any[]>('SELECT * FROM repair_receipts');
     return rows.map(row => ({
       ...row,
       usedParts: JSON.parse(row.usedParts),
@@ -1640,12 +1660,12 @@ export class DatabaseService {
   // ==================== REPAIR PRICE TEMPLATES ====================
   static async getAllRepairPriceTemplates(): Promise<RepairPriceTemplate[]> {
     await this.ensureInitialized();
-    return await this.db.select<RepairPriceTemplate[]>('SELECT * FROM repair_price_templates');
+    return await this.db!.select<RepairPriceTemplate[]>('SELECT * FROM repair_price_templates');
   }
 
   static async addRepairPriceTemplate(template: RepairPriceTemplate): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO repair_price_templates (id, deviceType, laborCost, description, createdAt) 
        VALUES ($1, $2, $3, $4, $5)`,
       [template.id, template.deviceType, template.laborCost, template.description || null, template.createdAt]
@@ -1654,18 +1674,18 @@ export class DatabaseService {
 
   static async deleteRepairPriceTemplate(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM repair_price_templates WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM repair_price_templates WHERE id=$1', [id]);
   }
 
   // ==================== PROJECT NOTES ====================
   static async getAllProjectNotes(): Promise<ProjectNote[]> {
     await this.ensureInitialized();
-    return await this.db.select<ProjectNote[]>('SELECT * FROM project_notes');
+    return await this.db!.select<ProjectNote[]>('SELECT * FROM project_notes');
   }
 
   static async addProjectNote(note: ProjectNote): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `INSERT INTO project_notes (id, date, time, text) VALUES ($1, $2, $3, $4)`,
       [note.id, note.date, note.time, note.text]
     );
@@ -1673,7 +1693,7 @@ export class DatabaseService {
 
   static async updateProjectNote(note: ProjectNote): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute(
+    await this.db!.execute(
       `UPDATE project_notes SET date=$1, time=$2, text=$3 WHERE id=$4`,
       [note.date, note.time, note.text, note.id]
     );
@@ -1681,13 +1701,13 @@ export class DatabaseService {
 
   static async deleteProjectNote(id: string): Promise<void> {
     await this.ensureInitialized();
-    await this.db.execute('DELETE FROM project_notes WHERE id=$1', [id]);
+    await this.db!.execute('DELETE FROM project_notes WHERE id=$1', [id]);
   }
 
   // ==================== SETTINGS ====================
   static async getSettings(): Promise<SystemSettings> {
     await this.ensureInitialized();
-    const rows = await this.db.select<{ key: string; value: string }[]>('SELECT * FROM settings');
+    const rows = await this.db!.select<{ key: string; value: string }[]>('SELECT * FROM settings');
 
     const settings: SystemSettings = {
       shopName: 'فروشگاه من',
@@ -1718,7 +1738,7 @@ export class DatabaseService {
 
     const entries = Object.entries(settings);
     for (const [key, value] of entries) {
-      await this.db.execute(
+      await this.db!.execute(
         `INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)`,
         [key, String(value)]
       );
@@ -1804,7 +1824,7 @@ export class DatabaseService {
 
       // Test read
       try {
-        await this.db.select('SELECT 1');
+        await this.db!.select('SELECT 1');
         result.canRead = true;
       } catch (readError) {
         result.error = `Read failed: ${readError}`;
@@ -1813,10 +1833,10 @@ export class DatabaseService {
 
       // Test write
       try {
-        await this.db.execute('CREATE TABLE IF NOT EXISTS _health_check (id INTEGER)');
-        await this.db.execute('INSERT INTO _health_check (id) VALUES (1)');
-        await this.db.execute('DELETE FROM _health_check');
-        await this.db.execute('DROP TABLE _health_check');
+        await this.db!.execute('CREATE TABLE IF NOT EXISTS _health_check (id INTEGER)');
+        await this.db!.execute('INSERT INTO _health_check (id) VALUES (1)');
+        await this.db!.execute('DELETE FROM _health_check');
+        await this.db!.execute('DROP TABLE _health_check');
         result.canWrite = true;
       } catch (writeError) {
         result.error = `Write failed: ${writeError}`;
@@ -1844,10 +1864,10 @@ export class DatabaseService {
       try {
         // Optimize database before closing
         console.log('🔄 Optimizing database...');
-        await this.db.execute('PRAGMA optimize');
+        await this.db!.execute('PRAGMA optimize');
 
         // Checkpoint WAL file to merge changes into main database
-        await this.db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+        await this.db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
 
         console.log('✅ Database optimized');
       } catch (error) {
@@ -1855,7 +1875,7 @@ export class DatabaseService {
         // Continue with close even if optimization fails
       }
 
-      await this.db.close();
+      await this.db!.close();
       this.db = null;
       console.log('✅ Database closed');
     }
