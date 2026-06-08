@@ -29,13 +29,19 @@ export const useWindowStore = create<WindowState>()(
 
       openWindow: (title, type, data) => {
         const id = crypto.randomUUID();
+        // Stack on top of EVERY existing window. Using max(zIndex)+1 (not
+        // array length) keeps z-indexes monotonic — length-based math collides
+        // when windows are closed/restored, which let a child window (e.g.
+        // CHECK_FORM opened from a restored fullscreen InvoiceForm) land BEHIND
+        // its parent and show through the parent's inactive opacity-90 ("محو").
+        const topZIndex = get().windows.reduce((max, w) => Math.max(max, w.zIndex), 99);
         const newWindow: AppWindow = {
           id,
           title,
           type,
           data,
           isMinimized: false,
-          zIndex: 100 + get().windows.length,
+          zIndex: topZIndex + 1,
         };
 
         // Stack the new window on top — DO NOT minimize the currently active one.
@@ -89,9 +95,11 @@ export const useWindowStore = create<WindowState>()(
             w.id === state.activeWindowId && w.id !== id ? { ...w, isMinimized: true } : w
           );
 
-          // Restore the target window
-          const finalWindows = windowsWithMinimizedActive.map(w => 
-             w.id === id ? { ...w, isMinimized: false, zIndex: 100 + state.windows.length + 1 } : w
+          // Restore the target window on top of every other window (max+1,
+          // not length-based — see openWindow for why length collides).
+          const topZIndex = state.windows.reduce((max, w) => Math.max(max, w.zIndex), 99);
+          const finalWindows = windowsWithMinimizedActive.map(w =>
+             w.id === id ? { ...w, isMinimized: false, zIndex: topZIndex + 1 } : w
           );
 
           return {
