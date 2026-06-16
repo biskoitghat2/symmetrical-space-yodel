@@ -60,14 +60,13 @@ const typeMeta = (t: InvoiceType) => {
     }
 };
 
-const DISCRETE_UNITS = ['عدد', 'بسته', 'دستگاه', 'کارتن', 'شاخه', 'جفت'];
 
 export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData, type = 'SALE' }) => {
     const [formState, setFormState, clearDraft] = useDraft(windowId, INITIAL_STATE);
     const closeWindow = useWindowStore((s) => s.closeWindow);
     const openWindow = useWindowStore((s) => s.openWindow);
     const setPage = useWindowStore((s) => s.setPage);
-    const { customers, products, addInvoice, updateInvoice, bankAccounts, checks } = useDataStore();
+    const { customers, products, units, addInvoice, updateInvoice, bankAccounts, checks } = useDataStore();
     const { showToast, confirm } = useUIStore();
 
     const isEditMode = !!initialData?.id;
@@ -645,7 +644,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                                 value={item.quantity}
                                                 onChange={e => {
                                                     let raw = e.target.value.replace(/٫/g, '.');
-                                                    const isDiscrete = DISCRETE_UNITS.includes(productInfo?.unit || 'عدد');
+                                                    const unitInfo = units.find(u => u.name === (productInfo?.unit || 'عدد'));
+                                                    const isDiscrete = !(unitInfo?.isDecimal ?? false);
                                                     if (isDiscrete) raw = raw.replace(/[^0-9]/g, '');
                                                     else { raw = raw.replace(/[^0-9.]/g, ''); const parts = raw.split('.'); if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join(''); }
                                                     if (raw === '') handleUpdateItem(item.id, { quantity: '' as any });

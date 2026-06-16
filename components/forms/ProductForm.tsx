@@ -172,6 +172,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ windowId, initialData 
         name: initialData.name,
         category: initialData.category,
         sku: initialData.sku || '',
+        unit: initialData.unit || 'عدد',
         buyPrice: initialData.buyPrice.toString(),
         sellPrice: initialData.sellPrice.toString(),
         stock: initialData.stock.toString(),
