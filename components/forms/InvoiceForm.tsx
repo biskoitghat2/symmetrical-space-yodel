@@ -664,8 +664,16 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                             <input
                                                 ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][2] = el; }}
                                                 type="text"
-                                                value={item.unitPrice.toLocaleString()}
-                                                onChange={e => handleUpdateItem(item.id, { unitPrice: toLatinNumber(e.target.value) })}
+                                                value={
+                                                    activeCell?.row === rowIndex && activeCell?.col === 2
+                                                        ? (item.unitPrice === 0 ? '' : String(item.unitPrice))
+                                                        : item.unitPrice.toLocaleString()
+                                                }
+                                                onChange={e => {
+                                                    const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
+                                                    if (raw === '') handleUpdateItem(item.id, { unitPrice: 0 });
+                                                    else { const v = Number(raw); if (!isNaN(v)) handleUpdateItem(item.id, { unitPrice: v }); }
+                                                }}
                                                 onKeyDown={e => handleCellKeyDown(e, rowIndex, 2)}
                                                 onFocus={e => { setActiveCell({ row: rowIndex, col: 2 }); e.target.select(); }}
                                                 className={`${cellInput} font-mono font-bold text-left`}
@@ -680,9 +688,17 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                             <input
                                                 ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][3] = el; }}
                                                 type="text"
-                                                value={item.discount > 0 ? item.discount.toLocaleString() : ''}
+                                                value={
+                                                    activeCell?.row === rowIndex && activeCell?.col === 3
+                                                        ? (item.discount === 0 ? '' : String(item.discount))
+                                                        : (item.discount > 0 ? item.discount.toLocaleString() : '')
+                                                }
                                                 placeholder="0"
-                                                onChange={e => handleUpdateItem(item.id, { discount: toLatinNumber(e.target.value) })}
+                                                onChange={e => {
+                                                    const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
+                                                    if (raw === '') handleUpdateItem(item.id, { discount: 0 });
+                                                    else { const v = Number(raw); if (!isNaN(v)) handleUpdateItem(item.id, { discount: v }); }
+                                                }}
                                                 onKeyDown={e => handleCellKeyDown(e, rowIndex, 3)}
                                                 onFocus={e => { setActiveCell({ row: rowIndex, col: 3 }); e.target.select(); }}
                                                 className={`${cellInput} font-mono text-left text-rose-600`}

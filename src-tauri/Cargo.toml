@@ -1,6 +1,7 @@
 [package]
 name = "hesabflow"
-version = "2.0.6"
+version = "2.0.7"
+
 description = "HesabFlow - Smart Accounting"
 authors = ["HesabFlow"]
 edition = "2021"

@@ -3,7 +3,7 @@ import { Invoice, Customer } from '../types';
 import { useDataStore } from '../store/dataStore';
 import { InvoicePrintTemplate } from './InvoicePrintTemplate';
 import { X, Printer, Image as ImageIcon, Settings, FileText, Smartphone, Wallet, Download } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { toPng, toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
 
 interface PrintPreviewModalProps {
@@ -135,9 +135,10 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, o
 
           for (let i = 0; i < pageElements.length; i++) {
               const page = pageElements[i];
-              const dataUrl = await toPng(page, { 
-                  quality: 1, 
-                  pixelRatio: 3, // Higher quality for PDF
+              // JPEG at pixelRatio 1.5 keeps file size small while staying readable
+              const dataUrl = await toJpeg(page, {
+                  quality: 0.85,
+                  pixelRatio: 1.5,
                   backgroundColor: '#ffffff'
               });
 
@@ -145,7 +146,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ invoice, o
                   pdf.addPage();
               }
 
-              pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+              pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
           }
 
           pdf.save(`فاکتور-${invoice.number}.pdf`);

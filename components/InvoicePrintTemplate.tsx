@@ -10,19 +10,23 @@ interface InvoicePrintTemplateProps {
   showBalance: boolean;
 }
 
-const ITEMS_PER_PAGE_A4 = 20; // Increased from 15
-const ITEMS_PER_PAGE_A5 = 15; // Increased from 10
+// First page has info boxes (seller/buyer) so fits fewer rows; subsequent pages have more room.
+const FIRST_PAGE_A4 = 13;
+const OTHER_PAGE_A4 = 16;
+const FIRST_PAGE_A5 = 8;
+const OTHER_PAGE_A5 = 10;
 
 export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invoice, customer, settings, paperSize, showBalance }) => {
   const isSale = invoice.type === 'SALE';
-  const itemsPerPage = paperSize === 'A4' ? ITEMS_PER_PAGE_A4 : ITEMS_PER_PAGE_A5;
+  const firstPageCount = paperSize === 'A4' ? FIRST_PAGE_A4 : FIRST_PAGE_A5;
+  const otherPageCount = paperSize === 'A4' ? OTHER_PAGE_A4 : OTHER_PAGE_A5;
   
   // Calculate actual payment details
   const paidCash = invoice.paidCashAmount || 0;
   const paidCheck = invoice.paidCheckAmount || 0;
-  const totalDiscount = invoice.totalDiscount || 0;
   const totalAmount = invoice.totalAmount || 0;
-  const remainedAmount = totalAmount - totalDiscount - paidCash - paidCheck;
+  // totalAmount is already after all discounts (net payable); don't subtract discount again
+  const remainedAmount = totalAmount - paidCash - paidCheck;
 
   // Determine actual payment method
   const getPaymentMethodLabel = () => {
@@ -70,10 +74,13 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
   // Balance Calculations (Cardex Based)
   const currentBalance = customer?.balance || 0;
 
-  // Split items into pages
-  const pages: InvoiceItem[][] = [];
-  for (let i = 0; i < invoice.items.length; i += itemsPerPage) {
-    pages.push(invoice.items.slice(i, i + itemsPerPage));
+  // Split items into pages — first page fits fewer rows (info boxes take space)
+  const pages: { items: InvoiceItem[]; startIndex: number }[] = [];
+  if (invoice.items.length > 0) {
+    pages.push({ items: invoice.items.slice(0, firstPageCount), startIndex: 0 });
+    for (let i = firstPageCount; i < invoice.items.length; i += otherPageCount) {
+      pages.push({ items: invoice.items.slice(i, i + otherPageCount), startIndex: i });
+    }
   }
 
   // Header Component (reusable)
@@ -182,10 +189,10 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
       `}</style>
       
       <div id="invoice-print-node" className="bg-white">
-        {pages.map((pageItems, pageIndex) => {
+        {pages.map((page, pageIndex) => {
+          const { items: pageItems, startIndex } = page;
           const isFirstPage = pageIndex === 0;
           const isLastPage = pageIndex === pages.length - 1;
-          const startIndex = pageIndex * itemsPerPage;
 
           return (
             <div
