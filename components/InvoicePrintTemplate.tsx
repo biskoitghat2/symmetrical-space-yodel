@@ -260,17 +260,6 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                         <td className="border border-black p-1 text-left pl-1 font-black bg-gray-50 text-black">{item.total.toLocaleString()}</td>
                       </tr>
                     ))}
-                    {/* Fill empty rows to page capacity for a professional look */}
-                    {Array.from({ length: (isFirstPage ? firstPageCount : otherPageCount) - pageItems.length }, (_, i) => (
-                      <tr key={`fill-${i}`}>
-                        <td className="border border-black p-1 h-[8mm]">&nbsp;</td>
-                        <td className="border border-black p-1">&nbsp;</td>
-                        <td className="border border-black p-1">&nbsp;</td>
-                        <td className="border border-black p-1">&nbsp;</td>
-                        <td className="border border-black p-1">&nbsp;</td>
-                        <td className="border border-black p-1 bg-gray-50">&nbsp;</td>
-                      </tr>
-                    ))}
                   </tbody>
                   {/* Footer - only on last page */}
                   {isLastPage && (
@@ -285,8 +274,8 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                 </table>
               </div>
 
-              {/* Customer Balance Section - only on last page */}
-              {isLastPage && showBalance && customer && (
+              {/* Customer Balance Section - only on last page, only for registered non-guest customers */}
+              {isLastPage && showBalance && customer && !customer.isGuest && invoice.customerId && (
                 <div className="mb-2 border border-dashed border-gray-400 p-2 bg-gray-50 flex justify-between items-center text-[10px]">
                   <div className="font-bold text-gray-700 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>

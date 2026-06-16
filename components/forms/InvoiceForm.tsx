@@ -209,43 +209,54 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
         setProductModalOpen(true);
     };
 
+    const buildItem = (product: Product): InvoiceItem => {
+        const basePrice = isSaleType ? product.sellPrice : product.buyPrice;
+        const sellPriceUpdate = type === 'PURCHASE' ? product.sellPrice : undefined;
+        return {
+            id: crypto.randomUUID(),
+            productId: product.id,
+            productName: product.name,
+            quantity: 1,
+            unitPrice: basePrice,
+            buyPriceSnapshot: product.buyPrice,
+            sellPriceUpdate,
+            discount: 0, tax: 0,
+            total: basePrice,
+        };
+    };
+
+    // Single-select (old behaviour, called when modal is in single mode)
     const handleSelectProduct = (product: Product) => {
         if (productModalRow === null) return;
         const row = productModalRow;
-        const basePrice = isSaleType ? product.sellPrice : product.buyPrice;
-
-        const sellPriceUpdate = type === 'PURCHASE' ? product.sellPrice : undefined;
+        const item = buildItem(product);
 
         if (row < formState.items.length) {
             handleUpdateItem(formState.items[row].id, {
-                productId: product.id,
-                productName: product.name,
-                unitPrice: basePrice,
-                buyPriceSnapshot: product.buyPrice,
-                sellPriceUpdate,
+                productId: item.productId,
+                productName: item.productName,
+                unitPrice: item.unitPrice,
+                buyPriceSnapshot: item.buyPriceSnapshot,
+                sellPriceUpdate: item.sellPriceUpdate,
                 quantity: 1,
-                discount: 0,
-                tax: 0,
-                total: basePrice,
+                discount: 0, tax: 0,
+                total: item.unitPrice,
             });
             queueFocus(row, 1);
         } else {
-            const newItem: InvoiceItem = {
-                id: crypto.randomUUID(),
-                productId: product.id,
-                productName: product.name,
-                quantity: 1,
-                unitPrice: basePrice,
-                buyPriceSnapshot: product.buyPrice,
-                sellPriceUpdate,
-                discount: 0, tax: 0, total: basePrice,
-            };
-            const newIdx = formState.items.length;
-            setFormState(prev => ({ ...prev, items: [...prev.items, newItem] }));
-            queueFocus(newIdx, 1);
+            setFormState(prev => ({ ...prev, items: [...prev.items, item] }));
+            queueFocus(formState.items.length, 1);
         }
         setProductModalOpen(false);
         setProductModalRow(null);
+    };
+
+    // Multi-add (done-done mode): modal stays open, products appended one-by-one or in batch
+    const handleMultiAdd = (incoming: Product[]) => {
+        setFormState(prev => ({
+            ...prev,
+            items: [...prev.items, ...incoming.map(buildItem)],
+        }));
     };
 
     // ── Cell keyboard handler ───────────────────────────────────────────────
@@ -967,15 +978,17 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                 </div>
             </div>
 
-            {/* Product Search Modal */}
+            {/* Product Search Modal — done-done mode: modal stays open after each add */}
             <ProductSearchModal
                 isOpen={productModalOpen}
                 onClose={() => {
                     setProductModalOpen(false);
-                    if (productModalRow !== null) queueFocus(productModalRow, 0);
                     setProductModalRow(null);
+                    // focus last row after closing
+                    requestAnimationFrame(() => queueFocus(formState.items.length, 0));
                 }}
                 onSelect={handleSelectProduct}
+                onMultiAdd={!isServiceType ? handleMultiAdd : undefined}
                 onEdit={(product) => openWindow('ویرایش کالا', 'PRODUCT_FORM', { product })}
                 products={products}
                 isSaleType={isSaleType}
