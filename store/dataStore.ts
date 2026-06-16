@@ -1720,7 +1720,10 @@ export const useDataStore = create<DataState>()((set, get) => ({
             const newBuyPrice = firstItem.unitPrice;
             let newSellPrice = product.sellPrice;
 
-            if (product.pricingStrategy?.isActive) {
+            // Explicit sell price from invoice takes priority, then pricing strategy
+            if (firstItem.sellPriceUpdate && firstItem.sellPriceUpdate > 0) {
+              newSellPrice = firstItem.sellPriceUpdate;
+            } else if (product.pricingStrategy?.isActive) {
               newSellPrice = calcSellPriceFromStrategy(newBuyPrice, product.pricingStrategy);
             }
 

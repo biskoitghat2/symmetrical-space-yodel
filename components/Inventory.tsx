@@ -6,12 +6,15 @@ import { useWindowStore } from '../store/windowStore';
 import { Search, Plus, Archive, AlertTriangle, Layers, Settings2, Edit, FileText, Activity, TrendingUp, DollarSign, Package, Clock, Tag } from 'lucide-react';
 import { Pagination } from './ui/Pagination';
 import { Select } from './ui/Select';
+import { ExportPreview, ExportColumn, ExportSortOption } from './ui/ExportPreview';
 import { normalizePersianDate } from '../utils/dateUtils';
+import { moneySum } from '../utils/money';
+import { Product } from '../types';
 
 const ITEMS_PER_PAGE = 20;
 
 export const Inventory: React.FC = () => {
-    const { products, categories } = useDataStore();
+    const { products, categories, settings } = useDataStore();
     const openWindow = useWindowStore((state) => state.openWindow);
 
     // Local State for Filtering and Pagination
@@ -20,6 +23,7 @@ export const Inventory: React.FC = () => {
     const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
     const [sortBy, setSortBy] = useState<'default' | 'last_update'>('default');
     const [currentPage, setCurrentPage] = useState(1);
+    const [showPriceList, setShowPriceList] = useState(false);
 
     // Stats
     const stats = useMemo(() => {
@@ -188,6 +192,13 @@ export const Inventory: React.FC = () => {
                             دسته‌ها
                         </button>
                         <button
+                            onClick={() => setShowPriceList(true)}
+                            className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-colors rounded-none flex items-center gap-1.5"
+                        >
+                            <FileText size={13} />
+                            قیمت‌نامه PDF
+                        </button>
+                        <button
                             onClick={() => openWindow('افزودن کالا جدید', 'PRODUCT_FORM')}
                             className="px-3 py-1.5 bg-primary hover:bg-slate-800 text-white text-xs font-bold transition-colors rounded-none flex items-center gap-1.5"
                         >
@@ -303,6 +314,49 @@ export const Inventory: React.FC = () => {
                 itemsPerPage={ITEMS_PER_PAGE}
                 totalItems={filteredProducts.length}
             />
+
+            {showPriceList && (() => {
+                const priceListColumns: ExportColumn<Product>[] = [
+                    { key: 'name',      label: 'نام کالا',       width: '30%' },
+                    { key: 'category',  label: 'دسته',           width: '14%' },
+                    { key: 'unit',      label: 'واحد',           width: '9%',  format: (p) => p.unit || 'عدد' },
+                    { key: 'buyPrice',  label: 'قیمت خرید (ریال)', width: '16%', align: 'center' as const,
+                        format: (p) => p.buyPrice.toLocaleString(), excelValue: (p) => p.buyPrice },
+                    { key: 'sellPrice', label: 'قیمت فروش (ریال)', width: '16%', align: 'center' as const,
+                        format: (p) => p.sellPrice.toLocaleString(), excelValue: (p) => p.sellPrice },
+                    { key: 'stock',     label: 'موجودی',          width: '11%', align: 'center' as const,
+                        format: (p) => p.stock.toLocaleString(), excelValue: (p) => p.stock },
+                ];
+                const priceListSort: ExportSortOption[] = [
+                    { value: 'sell_desc', label: 'گران‌ترین',    compare: (a: Product, b: Product) => b.sellPrice - a.sellPrice },
+                    { value: 'sell_asc',  label: 'ارزان‌ترین',  compare: (a: Product, b: Product) => a.sellPrice - b.sellPrice },
+                    { value: 'name_asc',  label: 'نام (الف-ی)', compare: (a: Product, b: Product) => a.name.localeCompare(b.name, 'fa') },
+                    { value: 'stock_desc',label: 'بیشترین موجودی', compare: (a: Product, b: Product) => b.stock - a.stock },
+                ];
+                const totalBuy  = moneySum(filteredProducts.map(p => p.buyPrice * p.stock));
+                const totalSell = moneySum(filteredProducts.map(p => p.sellPrice * p.stock));
+                const priceListSummary = {
+                    label: 'جمع ارزش انبار',
+                    values: {
+                        buyPrice:  totalBuy.toLocaleString() + ' ریال',
+                        sellPrice: totalSell.toLocaleString() + ' ریال',
+                    },
+                };
+                return (
+                    <ExportPreview
+                        open={showPriceList}
+                        onClose={() => setShowPriceList(false)}
+                        title="قیمت‌نامه کالا"
+                        subtitle={`${settings?.shopName || ''} — ${new Date().toLocaleDateString('fa-IR-u-nu-latn')} | تعداد: ${filteredProducts.length} کالا`}
+                        filename="قیمت‌نامه"
+                        columns={priceListColumns}
+                        rows={filteredProducts}
+                        sortOptions={priceListSort}
+                        defaultSortValue="name_asc"
+                        summary={priceListSummary}
+                    />
+                );
+            })()}
         </div>
     );
 };

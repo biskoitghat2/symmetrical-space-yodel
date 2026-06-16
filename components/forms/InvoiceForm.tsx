@@ -214,12 +214,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
         const row = productModalRow;
         const basePrice = isSaleType ? product.sellPrice : product.buyPrice;
 
+        const sellPriceUpdate = type === 'PURCHASE' ? product.sellPrice : undefined;
+
         if (row < formState.items.length) {
             handleUpdateItem(formState.items[row].id, {
                 productId: product.id,
                 productName: product.name,
                 unitPrice: basePrice,
                 buyPriceSnapshot: product.buyPrice,
+                sellPriceUpdate,
                 quantity: 1,
                 discount: 0,
                 tax: 0,
@@ -234,6 +237,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                 quantity: 1,
                 unitPrice: basePrice,
                 buyPriceSnapshot: product.buyPrice,
+                sellPriceUpdate,
                 discount: 0, tax: 0, total: basePrice,
             };
             const newIdx = formState.items.length;
@@ -300,11 +304,13 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                 break;
             }
             case 'Enter':
-            case 'Tab':
+            case 'Tab': {
                 e.preventDefault();
-                if (col < 3) navigateToCell(row, col + 1);
+                const maxCol = type === 'PURCHASE' ? 4 : 3;
+                if (col < maxCol) navigateToCell(row, col + 1);
                 else navigateToCell(row + 1, 0);
                 break;
+            }
             case 'Escape':
                 e.preventDefault();
                 input.blur();
@@ -598,6 +604,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                 {!isServiceType && <th className="py-2 px-2 w-16 text-center text-[10px]">واحد</th>}
                                 <th className="py-2 px-2 w-32 text-left">قیمت واحد</th>
                                 {!isServiceType && <th className="py-2 px-2 w-28 text-left bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">خرید</th>}
+                                {type === 'PURCHASE' && <th className="py-2 px-2 w-28 text-left bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[10px]">قیمت فروش جدید</th>}
                                 <th className="py-2 px-2 w-28 text-left">تخفیف</th>
                                 <th className="py-2 px-2 w-36 text-left">جمع</th>
                                 {!isServiceType && type === 'SALE' && <th className="py-2 px-2 w-24 text-left bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">سود</th>}
@@ -684,23 +691,46 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                                 {item.buyPriceSnapshot.toLocaleString()}
                                             </td>
                                         )}
+                                        {type === 'PURCHASE' && (
+                                            <td className="p-0">
+                                                <input
+                                                    ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][3] = el; }}
+                                                    type="text"
+                                                    value={
+                                                        activeCell?.row === rowIndex && activeCell?.col === 3
+                                                            ? ((item.sellPriceUpdate ?? 0) === 0 ? '' : String(item.sellPriceUpdate))
+                                                            : ((item.sellPriceUpdate ?? 0) > 0 ? (item.sellPriceUpdate!).toLocaleString() : '')
+                                                    }
+                                                    placeholder="قیمت فروش"
+                                                    onChange={e => {
+                                                        const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
+                                                        if (raw === '') handleUpdateItem(item.id, { sellPriceUpdate: 0 });
+                                                        else { const v = Number(raw); if (!isNaN(v)) handleUpdateItem(item.id, { sellPriceUpdate: v }); }
+                                                    }}
+                                                    onKeyDown={e => handleCellKeyDown(e, rowIndex, 3)}
+                                                    onFocus={e => { setActiveCell({ row: rowIndex, col: 3 }); e.target.select(); }}
+                                                    className={`${cellInput} font-mono text-left text-emerald-700 dark:text-emerald-400`}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="p-0">
                                             <input
-                                                ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][3] = el; }}
+                                                ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][type === 'PURCHASE' ? 4 : 3] = el; }}
                                                 type="text"
-                                                value={
-                                                    activeCell?.row === rowIndex && activeCell?.col === 3
+                                                value={(() => {
+                                                    const discountCol = type === 'PURCHASE' ? 4 : 3;
+                                                    return activeCell?.row === rowIndex && activeCell?.col === discountCol
                                                         ? (item.discount === 0 ? '' : String(item.discount))
-                                                        : (item.discount > 0 ? item.discount.toLocaleString() : '')
-                                                }
+                                                        : (item.discount > 0 ? item.discount.toLocaleString() : '');
+                                                })()}
                                                 placeholder="0"
                                                 onChange={e => {
                                                     const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
                                                     if (raw === '') handleUpdateItem(item.id, { discount: 0 });
                                                     else { const v = Number(raw); if (!isNaN(v)) handleUpdateItem(item.id, { discount: v }); }
                                                 }}
-                                                onKeyDown={e => handleCellKeyDown(e, rowIndex, 3)}
-                                                onFocus={e => { setActiveCell({ row: rowIndex, col: 3 }); e.target.select(); }}
+                                                onKeyDown={e => handleCellKeyDown(e, rowIndex, type === 'PURCHASE' ? 4 : 3)}
+                                                onFocus={e => { const discountCol = type === 'PURCHASE' ? 4 : 3; setActiveCell({ row: rowIndex, col: discountCol }); e.target.select(); }}
                                                 className={`${cellInput} font-mono text-left text-rose-600`}
                                             />
                                         </td>
@@ -729,7 +759,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                             {/* New row */}
                             <tr className={`border-b border-slate-200 dark:border-neutral-800 ${activeCell?.row === formState.items.length ? 'bg-blue-50/80 dark:bg-blue-900/20' : 'bg-slate-50/30 dark:bg-neutral-900/30'}`}>
                                 <td className="py-1.5 px-2 text-center text-xs font-mono text-slate-400">{formState.items.length + 1}</td>
-                                <td className="p-0" colSpan={isServiceType ? 5 : (type === 'SALE' ? 8 : 7)}>
+                                <td className="p-0" colSpan={isServiceType ? 5 : (type === 'SALE' ? 8 : type === 'PURCHASE' ? 8 : 7)}>
                                     <input
                                         ref={el => { const ri = formState.items.length; if (!cellRefs.current[ri]) cellRefs.current[ri] = {}; cellRefs.current[ri][0] = el; }}
                                         type="text"

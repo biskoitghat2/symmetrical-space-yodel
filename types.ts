@@ -172,6 +172,7 @@ export interface InvoiceItem {
   discountPercent?: number; // Optional: if user entered percent
   tax: number; // Total tax for this row
   total: number; // (quantity * unitPrice) - discount + tax
+  sellPriceUpdate?: number; // PURCHASE only: new sell price to save to product
 }
 
 export interface Invoice {

@@ -67,8 +67,8 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({ type }) => {
     }
 
     switch (sortKey) {
-      case 'date_desc':   result.sort((a, b) => normalizePersianDate(b.date).localeCompare(normalizePersianDate(a.date))); break;
-      case 'date_asc':    result.sort((a, b) => normalizePersianDate(a.date).localeCompare(normalizePersianDate(b.date))); break;
+      case 'date_desc':   result.sort((a, b) => { const d = normalizePersianDate(b.date).localeCompare(normalizePersianDate(a.date)); return d !== 0 ? d : b.number - a.number; }); break;
+      case 'date_asc':    result.sort((a, b) => { const d = normalizePersianDate(a.date).localeCompare(normalizePersianDate(b.date)); return d !== 0 ? d : a.number - b.number; }); break;
       case 'amount_desc': result.sort((a, b) => b.totalAmount - a.totalAmount); break;
       case 'amount_asc':  result.sort((a, b) => a.totalAmount - b.totalAmount); break;
       case 'number_desc': result.sort((a, b) => b.number - a.number); break;
@@ -420,7 +420,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({ type }) => {
           <Select
             className="w-40"
             value={sortKey}
-            onChange={(v) => setSortKey(v as SortKey)}
+            onChange={(v) => { setSortKey(v as SortKey); setCurrentPage(1); }}
             options={[
               { value: 'date_desc', label: 'مرتب: جدیدترین' },
               { value: 'date_asc', label: 'مرتب: قدیمی‌ترین' },

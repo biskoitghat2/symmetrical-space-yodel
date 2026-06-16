@@ -260,6 +260,17 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                         <td className="border border-black p-1 text-left pl-1 font-black bg-gray-50 text-black">{item.total.toLocaleString()}</td>
                       </tr>
                     ))}
+                    {/* Fill empty rows to page capacity for a professional look */}
+                    {Array.from({ length: (isFirstPage ? firstPageCount : otherPageCount) - pageItems.length }, (_, i) => (
+                      <tr key={`fill-${i}`}>
+                        <td className="border border-black p-1 h-[8mm]">&nbsp;</td>
+                        <td className="border border-black p-1">&nbsp;</td>
+                        <td className="border border-black p-1">&nbsp;</td>
+                        <td className="border border-black p-1">&nbsp;</td>
+                        <td className="border border-black p-1">&nbsp;</td>
+                        <td className="border border-black p-1 bg-gray-50">&nbsp;</td>
+                      </tr>
+                    ))}
                   </tbody>
                   {/* Footer - only on last page */}
                   {isLastPage && (
