@@ -251,14 +251,6 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
         setProductModalRow(null);
     };
 
-    // Multi-add (done-done mode): modal stays open, products appended one-by-one or in batch
-    const handleMultiAdd = (incoming: Product[]) => {
-        setFormState(prev => ({
-            ...prev,
-            items: [...prev.items, ...incoming.map(buildItem)],
-        }));
-    };
-
     // ── Cell keyboard handler ───────────────────────────────────────────────
     const handleCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
         const input = e.target as HTMLInputElement;
@@ -978,17 +970,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                 </div>
             </div>
 
-            {/* Product Search Modal — done-done mode: modal stays open after each add */}
+            {/* Product Search Modal */}
             <ProductSearchModal
                 isOpen={productModalOpen}
                 onClose={() => {
                     setProductModalOpen(false);
+                    if (productModalRow !== null) queueFocus(productModalRow, 0);
                     setProductModalRow(null);
-                    // focus last row after closing
-                    requestAnimationFrame(() => queueFocus(formState.items.length, 0));
                 }}
                 onSelect={handleSelectProduct}
-                onMultiAdd={!isServiceType ? handleMultiAdd : undefined}
                 onEdit={(product) => openWindow('ویرایش کالا', 'PRODUCT_FORM', { product })}
                 products={products}
                 isSaleType={isSaleType}
