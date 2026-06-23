@@ -674,11 +674,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                             <input
                                                 ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][2] = el; }}
                                                 type="text"
-                                                value={
-                                                    activeCell?.row === rowIndex && activeCell?.col === 2
-                                                        ? (item.unitPrice === 0 ? '' : String(item.unitPrice))
-                                                        : item.unitPrice.toLocaleString()
-                                                }
+                                                value={item.unitPrice === 0 ? '' : item.unitPrice.toLocaleString()}
                                                 onChange={e => {
                                                     const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
                                                     if (raw === '') handleUpdateItem(item.id, { unitPrice: 0 });
@@ -699,11 +695,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                                 <input
                                                     ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][3] = el; }}
                                                     type="text"
-                                                    value={
-                                                        activeCell?.row === rowIndex && activeCell?.col === 3
-                                                            ? ((item.sellPriceUpdate ?? 0) === 0 ? '' : String(item.sellPriceUpdate))
-                                                            : ((item.sellPriceUpdate ?? 0) > 0 ? (item.sellPriceUpdate!).toLocaleString() : '')
-                                                    }
+                                                    value={(item.sellPriceUpdate ?? 0) > 0 ? (item.sellPriceUpdate!).toLocaleString() : ''}
                                                     placeholder="قیمت فروش"
                                                     onChange={e => {
                                                         const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
@@ -720,12 +712,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ windowId, initialData,
                                             <input
                                                 ref={el => { if (!cellRefs.current[rowIndex]) cellRefs.current[rowIndex] = {}; cellRefs.current[rowIndex][type === 'PURCHASE' ? 4 : 3] = el; }}
                                                 type="text"
-                                                value={(() => {
-                                                    const discountCol = type === 'PURCHASE' ? 4 : 3;
-                                                    return activeCell?.row === rowIndex && activeCell?.col === discountCol
-                                                        ? (item.discount === 0 ? '' : String(item.discount))
-                                                        : (item.discount > 0 ? item.discount.toLocaleString() : '');
-                                                })()}
+                                                value={item.discount > 0 ? item.discount.toLocaleString() : ''}
                                                 placeholder="0"
                                                 onChange={e => {
                                                     const raw = e.target.value.replace(/,/g, '').replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30)).replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
