@@ -10,25 +10,21 @@ interface InvoicePrintTemplateProps {
   showBalance: boolean;
 }
 
-// First page has info boxes (seller/buyer) so fits fewer rows; subsequent pages have more room.
-const FIRST_PAGE_A4 = 13;
-const OTHER_PAGE_A4 = 16;
-const FIRST_PAGE_A5 = 8;
-const OTHER_PAGE_A5 = 10;
+const FIRST_PAGE_A4 = 16;
+const OTHER_PAGE_A4 = 22;
+const FIRST_PAGE_A5 = 10;
+const OTHER_PAGE_A5 = 14;
 
 export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invoice, customer, settings, paperSize, showBalance }) => {
   const isSale = invoice.type === 'SALE';
   const firstPageCount = paperSize === 'A4' ? FIRST_PAGE_A4 : FIRST_PAGE_A5;
   const otherPageCount = paperSize === 'A4' ? OTHER_PAGE_A4 : OTHER_PAGE_A5;
-  
-  // Calculate actual payment details
+
   const paidCash = invoice.paidCashAmount || 0;
   const paidCheck = invoice.paidCheckAmount || 0;
   const totalAmount = invoice.totalAmount || 0;
-  // totalAmount is already after all discounts (net payable); don't subtract discount again
   const remainedAmount = totalAmount - paidCash - paidCheck;
 
-  // Determine actual payment method
   const getPaymentMethodLabel = () => {
     const hasCash = paidCash > 0;
     const hasCheck = paidCheck > 0;
@@ -39,10 +35,9 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
     if (!hasCash && !hasCheck && hasCredit) return 'نسیه';
     if ((hasCash || hasCheck) && hasCredit) return 'ترکیبی';
     if (hasCash && hasCheck) return 'نقد + چک';
-    
     return 'نامشخص';
   };
-  
+
   const seller = isSale ? {
       name: settings.shopName,
       phone: settings.shopPhone,
@@ -53,7 +48,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
       name: customer?.name,
       phone: customer?.phone,
       address: customer?.address,
-      taxId: '', 
+      taxId: '',
       postalCode: ''
   };
 
@@ -71,19 +66,19 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
       postalCode: settings.shopPostalCode
   };
 
-  // Balance Calculations (Cardex Based)
   const currentBalance = customer?.balance || 0;
+  const showBalanceCard = showBalance && customer && !customer.isGuest && invoice.customerId;
 
-  // Split items into pages — first page fits fewer rows (info boxes take space)
-  const pages: { items: InvoiceItem[]; startIndex: number }[] = [];
+  const pages: { items: InvoiceItem[]; startIndex: number; pageLimit: number }[] = [];
   if (invoice.items.length > 0) {
-    pages.push({ items: invoice.items.slice(0, firstPageCount), startIndex: 0 });
+    pages.push({ items: invoice.items.slice(0, firstPageCount), startIndex: 0, pageLimit: firstPageCount });
     for (let i = firstPageCount; i < invoice.items.length; i += otherPageCount) {
-      pages.push({ items: invoice.items.slice(i, i + otherPageCount), startIndex: i });
+      pages.push({ items: invoice.items.slice(i, i + otherPageCount), startIndex: i, pageLimit: otherPageCount });
     }
+  } else {
+    pages.push({ items: [], startIndex: 0, pageLimit: firstPageCount });
   }
 
-  // Header Component (reusable)
   const InvoiceHeader = ({ pageNum, totalPages }: { pageNum: number; totalPages: number }) => (
     <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-3">
       <div className="flex flex-col items-center">
@@ -92,7 +87,7 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
         </div>
         <h1 className={`${paperSize === 'A5' ? 'text-sm' : 'text-base'} font-black text-center text-black`}>{settings.shopName}</h1>
       </div>
-      
+
       <div className="text-center pt-1">
         <h2 className={`${paperSize === 'A5' ? 'text-base' : 'text-lg'} font-black mb-1 text-black`}>صورتحساب {isSale ? 'فروش' : 'خرید'} کالا و خدمات</h2>
         <span className="text-xs font-black bg-gray-200 px-3 py-1 border border-black text-black inline-block">
@@ -130,55 +125,53 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
             size: ${paperSize === 'A4' ? 'A4' : 'A5'};
             margin: 8mm;
           }
-          
+
           body {
             margin: 0;
             padding: 0;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
           }
-          
-          /* Hide everything except print content */
+
           body * {
             visibility: hidden;
           }
-          
+
           #invoice-print-node,
           #invoice-print-node * {
             visibility: visible;
           }
-          
+
           #invoice-print-node {
             position: absolute;
             left: 0;
             top: 0;
             width: 100%;
           }
-          
-          /* Table page break rules */
+
           table {
             page-break-inside: auto;
             border-collapse: collapse;
           }
-          
+
           thead {
             display: table-header-group;
           }
-          
+
           tfoot {
             display: table-footer-group;
           }
-          
+
           tr {
             page-break-inside: avoid;
             page-break-after: auto;
           }
-          
+
           tbody tr {
             page-break-inside: avoid;
           }
         }
-        
+
         @media screen {
           #invoice-print-node {
             max-width: ${paperSize === 'A4' ? '210mm' : '148mm'};
@@ -187,32 +180,30 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
           }
         }
       `}</style>
-      
+
       <div id="invoice-print-node" className="bg-white">
         {pages.map((page, pageIndex) => {
-          const { items: pageItems, startIndex } = page;
+          const { items: pageItems, startIndex, pageLimit } = page;
           const isFirstPage = pageIndex === 0;
           const isLastPage = pageIndex === pages.length - 1;
+          const fillerCount = Math.max(0, pageLimit - pageItems.length);
 
           return (
             <div
               key={pageIndex}
               data-page={pageIndex + 1}
               className={`${paperSize === 'A4' ? 'w-[210mm] min-h-[297mm] p-5' : 'w-[148mm] min-h-[210mm] p-4'} mx-auto font-sans leading-tight relative bg-white text-black box-border flex flex-col`}
-              style={{ 
+              style={{
                 direction: 'rtl',
                 pageBreakAfter: isLastPage ? 'auto' : 'always',
                 breakAfter: isLastPage ? 'auto' : 'page',
                 fontSize: paperSize === 'A4' ? '9pt' : '8pt'
               }}
             >
-              {/* Header - on every page */}
               <InvoiceHeader pageNum={pageIndex + 1} totalPages={pages.length} />
 
-              {/* Info Boxes - only on first page */}
               {isFirstPage && (
                 <div className="grid grid-cols-2 gap-3 mb-3">
-                  {/* Seller Box */}
                   <div className="border border-black p-2 relative">
                     <span className="absolute -top-2 right-3 bg-white px-1 font-black text-[10px] text-black">فروشنده</span>
                     <div className={`grid grid-cols-1 gap-y-0.5 ${paperSize === 'A5' ? 'text-[9px]' : 'text-[10px]'} font-bold mt-0.5 text-black leading-tight`}>
@@ -223,7 +214,6 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                     </div>
                   </div>
 
-                  {/* Buyer Box */}
                   <div className="border border-black p-2 relative">
                     <span className="absolute -top-2 right-3 bg-white px-1 font-black text-[10px] text-black">خریدار</span>
                     <div className={`grid grid-cols-1 gap-y-0.5 ${paperSize === 'A5' ? 'text-[9px]' : 'text-[10px]'} font-bold mt-0.5 text-black leading-tight`}>
@@ -236,7 +226,6 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                 </div>
               )}
 
-              {/* Table */}
               <div className="flex-1 mb-2">
                 <table className={`w-full border-collapse border border-black ${paperSize === 'A5' ? 'text-[9px]' : 'text-[10px]'}`}>
                   <thead>
@@ -260,8 +249,18 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                         <td className="border border-black p-1 text-left pl-1 font-black bg-gray-50 text-black">{item.total.toLocaleString()}</td>
                       </tr>
                     ))}
+                    {/* Filler rows to fill the table on last page */}
+                    {Array.from({ length: fillerCount }).map((_, i) => (
+                      <tr key={`filler-${i}`} className="border-b border-gray-200">
+                        <td className="border border-black p-1 text-center text-gray-300">-</td>
+                        <td className="border border-black p-1"></td>
+                        <td className="border border-black p-1"></td>
+                        <td className="border border-black p-1"></td>
+                        <td className="border border-black p-1"></td>
+                        <td className="border border-black p-1 bg-gray-50"></td>
+                      </tr>
+                    ))}
                   </tbody>
-                  {/* Footer - only on last page */}
                   {isLastPage && (
                     <tfoot>
                       <tr className="bg-gray-200 border-t-2 border-black">
@@ -274,30 +273,11 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                 </table>
               </div>
 
-              {/* Customer Balance Section - only on last page, only for registered non-guest customers */}
-              {isLastPage && showBalance && customer && !customer.isGuest && invoice.customerId && (
-                <div className="mb-2 border border-dashed border-gray-400 p-2 bg-gray-50 flex justify-between items-center text-[10px]">
-                  <div className="font-bold text-gray-700 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>
-                    وضعیت حساب مشتری (طبق آخرین بروزرسانی کاردکس):
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] text-gray-500">مانده کل حساب:</span>
-                    <span className={`font-black text-base ${currentBalance > 0 ? 'text-red-600' : currentBalance < 0 ? 'text-emerald-600' : 'text-black'}`} dir="ltr">
-                      {Math.abs(currentBalance).toLocaleString()}
-                    </span>
-                    <span className="text-[9px] font-bold text-black">
-                      {currentBalance > 0 ? 'بدهکار' : currentBalance < 0 ? 'بستانکار' : 'تسویه'}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Payment Details Section - only on last page */}
-              {isLastPage && (paidCash > 0 || paidCheck > 0 || remainedAmount > 0) && (
+              {/* Payment + Balance cards - only on last page */}
+              {isLastPage && (paidCash > 0 || paidCheck > 0 || remainedAmount > 0 || showBalanceCard) && (
                 <div className="mb-2 border border-black p-2 bg-white">
                   <h4 className="font-black text-[10px] mb-1 text-black">جزئیات پرداخت:</h4>
-                  <div className="grid grid-cols-3 gap-2 text-[9px]">
+                  <div className="grid gap-2 text-[9px]" style={{ gridTemplateColumns: `repeat(${[paidCash > 0, paidCheck > 0, remainedAmount > 0, !!showBalanceCard].filter(Boolean).length}, 1fr)` }}>
                     {paidCash > 0 && (
                       <div className="flex flex-col items-center p-1.5 bg-emerald-50 border border-emerald-200">
                         <span className="text-[8px] text-gray-600 mb-0.5">نقدی</span>
@@ -316,11 +296,21 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                         <span className="font-black text-amber-700">{remainedAmount.toLocaleString()} ریال</span>
                       </div>
                     )}
+                    {showBalanceCard && (
+                      <div className={`flex flex-col items-center p-1.5 border ${currentBalance > 0 ? 'bg-red-50 border-red-200' : currentBalance < 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <span className="text-[8px] text-gray-600 mb-0.5">مانده حساب</span>
+                        <span className={`font-black ${currentBalance > 0 ? 'text-red-600' : currentBalance < 0 ? 'text-emerald-600' : 'text-black'}`}>
+                          {Math.abs(currentBalance).toLocaleString()} ریال
+                        </span>
+                        <span className="text-[7px] font-bold text-gray-500">
+                          {currentBalance > 0 ? 'بدهکار' : currentBalance < 0 ? 'بستانکار' : 'تسویه'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Footer Info & Signatures - only on last page */}
               {isLastPage && (
                 <>
                   <div className="border border-black p-2 min-h-[35px] text-[10px] text-black mb-2">
@@ -345,7 +335,6 @@ export const InvoicePrintTemplate: React.FC<InvoicePrintTemplateProps> = ({ invo
                 </>
               )}
 
-              {/* Watermark/Footer */}
               <div className="text-center text-[8px] font-bold text-gray-400 mt-auto pt-2">
                 تولید شده توسط نرم‌افزار حسابداری حساب فلو (HESAB FLOW)
               </div>
